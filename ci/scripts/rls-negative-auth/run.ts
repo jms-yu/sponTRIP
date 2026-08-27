@@ -8,9 +8,19 @@
  * service-role client's auth.admin.createUser, signs in as each for real
  * access tokens, builds anon / user-A / user-B Supabase JS clients, and
  * asserts:
- *   - anon gets 0 rows unless `publicRead`
- *   - user B gets 0 rows / no effect against user A's owned rows
- *   - `adminOnly` targets reject both A and B entirely
+ *   READ:
+ *     - anon gets 0 rows unless `publicRead`
+ *     - user B gets 0 rows / no effect against user A's owned rows
+ *     - `adminOnly` targets reject both A and B entirely
+ *   WRITE (remediation cycle 1, finding 2 — previously untested entirely):
+ *     - anon/A/B cannot INSERT, UPDATE, or DELETE unless `ownerWritable`
+ *       is true AND the acting identity is the row's own owner
+ *
+ * Also (finding 3): before running the matrix, asserts every `target`
+ * actually exists in the live schema, and distinguishes a genuine RLS
+ * denial from a schema/transport error (PostgREST PGRST205 "table not
+ * found", PGRST202, network failure) rather than silently counting the
+ * latter as "0 visible rows = deny working correctly."
  *
  * Requires a running local Supabase stack (`supabase start`). Reads
  * SUPABASE_URL / SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY from the
@@ -45,6 +55,35 @@ interface TestUser {
   client: SupabaseClient;
 }
 
+// PostgREST error codes that mean "this isn't a schema/transport problem, it
+// really is an RLS/permission denial" — anything else (PGRST205 "table not
+// found", PGRST202 "function not found", or a thrown network error) must
+// fail loudly rather than being silently counted as "0 rows = deny working."
+// 42501 = insufficient_privilege (Postgres). PGRST116 = "no rows" from
+// .single()/.maybeSingle(), which is a legitimate empty-result shape, not
+// an error condition, for our purposes.
+const RLS_DENIAL_CODES = new Set(["42501", "PGRST116"]);
+// Prefixes of PostgREST codes that indicate the schema itself is wrong
+// (missing table, missing column, missing relationship) — these must never
+// be silently treated as a deny.
+const SCHEMA_ERROR_CODES = new Set(["PGRST202", "PGRST203", "PGRST205", "PGRST301"]);
+
+function classifyError(error: { code?: string; message?: string } | null): "denied" | "schema_error" | "other_error" {
+  if (!error) return "denied"; // no error at all is handled by the caller before classifyError is invoked
+  const code = error.code ?? "";
+  if (SCHEMA_ERROR_CODES.has(code)) return "schema_error";
+  if (RLS_DENIAL_CODES.has(code)) return "denied";
+  // Postgres RLS/permission errors sometimes surface without a recognized
+  // PostgREST code but with "permission denied" or "row-level security" in
+  // the message — treat those as denials too. Anything else is unknown and
+  // must not be silently swallowed.
+  const msg = (error.message ?? "").toLowerCase();
+  if (msg.includes("permission denied") || msg.includes("row-level security") || msg.includes("violates row-level security policy")) {
+    return "denied";
+  }
+  return "other_error";
+}
+
 async function createTestUser(admin: SupabaseClient, label: string): Promise<TestUser> {
   const email = `rls-neg-auth-${label}-${crypto.randomUUID()}@example.test`;
   const password = "correct horse battery staple 123";
@@ -71,62 +110,253 @@ async function createTestUser(admin: SupabaseClient, label: string): Promise<Tes
   return { id: data.user.id, email, client: userClient };
 }
 
-async function seedOwnedRow(admin: SupabaseClient, row: MatrixRow, ownerId: string): Promise<string | null> {
-  if (!row.ownerColumn || row.adminOnly) return null;
-  // Insert directly into the base table via the admin client so RLS never
-  // blocks the seed itself. smoke_test_view reads from smoke_test, so we
-  // seed the base table for either target.
-  const baseTable = row.target.endsWith("_view") ? row.target.replace(/_view$/, "") : row.target;
-  const { data, error } = await admin
-    .from(baseTable)
-    .insert({ [row.ownerColumn]: ownerId, label: `rls-neg-auth seed for ${row.target}` })
-    .select("id")
-    .single();
-  if (error) {
-    throw new Error(`Failed to seed owned row for ${row.target}: ${error.message}`);
+function baseTableFor(row: MatrixRow): string {
+  return row.target.endsWith("_view") ? row.target.replace(/_view$/, "") : row.target;
+}
+
+/** Asserts every matrix target actually exists in the live schema BEFORE
+ * running any assertions against it (finding 3) — a typo'd/renamed/dropped
+ * table must fail loudly, not silently pass as "0 rows visible." Queried
+ * via the service-role client (bypasses RLS, so existence — not
+ * visibility — is what's being checked here). */
+async function assertTargetsExist(admin: SupabaseClient, rows: MatrixRow[]): Promise<string[]> {
+  const failures: string[] = [];
+  for (const row of rows) {
+    // NOTE: deliberately NOT { head: true, count: "exact" } — that
+    // combination was empirically found (during remediation cycle 1) to
+    // return a bare 204 No Content with `error: null` for a table that
+    // does not exist at all, silently defeating this exact check. A plain
+    // row-returning select correctly surfaces PGRST205 for a missing table.
+    const { error } = await admin.from(row.target).select("*").limit(1);
+    if (error) {
+      failures.push(
+        `matrix target "${row.target}" does not exist or is not queryable via service_role ` +
+          `(code=${error.code ?? "unknown"} message="${error.message}") — fix the matrix entry or the schema ` +
+          `before trusting this suite's result for it`,
+      );
+    }
+  }
+  return failures;
+}
+
+async function seedRow(admin: SupabaseClient, row: MatrixRow, ownerId: string): Promise<string> {
+  const baseTable = baseTableFor(row);
+  const payload: Record<string, unknown> = { ...row.insertPayload };
+  if (row.ownerColumn) payload[row.ownerColumn] = ownerId;
+
+  const { data, error } = await admin.from(baseTable).insert(payload).select("id").single();
+  if (error || !data) {
+    throw new Error(`Failed to seed row for ${row.target}: ${error?.message}`);
   }
   return data.id as string;
 }
 
-async function countVisibleRows(client: SupabaseClient, target: string, rowId: string | null): Promise<number> {
+async function countVisibleRows(
+  client: SupabaseClient,
+  target: string,
+  rowId: string | null,
+): Promise<{ count: number; failure: string | null }> {
   let query = client.from(target).select("id", { count: "exact", head: false });
   if (rowId) query = query.eq("id", rowId);
   const { data, error } = await query;
-  // A permissions error (RLS denial surfaced as an error rather than an
-  // empty result set) also counts as "zero visible rows" for our purposes —
-  // both are a correct deny outcome.
-  if (error) return 0;
-  return data?.length ?? 0;
+
+  if (!error) return { count: data?.length ?? 0, failure: null };
+
+  const classification = classifyError(error);
+  if (classification === "denied") return { count: 0, failure: null };
+
+  // schema_error or other_error — this must NOT be silently treated as a
+  // successful deny (finding 3's exact bug).
+  return {
+    count: 0,
+    failure: `${target}: read attempt errored in an UNEXPECTED way (not a recognized RLS denial) — ` +
+      `code=${error.code ?? "unknown"} message="${error.message}" — this is a ${classification}, not a deny; ` +
+      `fix the matrix/schema, don't trust this as a pass`,
+  };
 }
 
-async function runRow(admin: SupabaseClient, anonClient: SupabaseClient, userA: TestUser, userB: TestUser, row: MatrixRow): Promise<string[]> {
+/** Attempts an INSERT as `client` (anon has actingUid=null and no owner
+ * column value set). Returns whether the row actually landed, confirmed by
+ * re-reading via the admin/service-role client afterward — never trusts
+ * the mutating call's own report alone (finding 2's explicit requirement).
+ * Cleans up any row it creates. */
+async function attemptInsert(
+  client: SupabaseClient,
+  admin: SupabaseClient,
+  row: MatrixRow,
+  actingUid: string | null,
+): Promise<{ succeeded: boolean; failure: string | null }> {
+  const baseTable = baseTableFor(row);
+  const payload: Record<string, unknown> = { ...row.insertPayload };
+  if (row.ownerColumn && actingUid) payload[row.ownerColumn] = actingUid;
+
+  const { data, error } = await client.from(row.target).insert(payload).select("id").single();
+
+  if (error) {
+    const classification = classifyError(error);
+    if (classification === "denied") return { succeeded: false, failure: null };
+    return {
+      succeeded: false,
+      failure: `${row.target}: INSERT attempt errored unexpectedly (not a recognized RLS denial) — ` +
+        `code=${error.code ?? "unknown"} message="${error.message}"`,
+    };
+  }
+  if (!data) return { succeeded: false, failure: null };
+
+  // Re-read via service_role — authoritative, doesn't trust the mutating
+  // call's own success report.
+  const { data: confirmed } = await admin.from(baseTable).select("id").eq("id", data.id).maybeSingle();
+  const succeeded = Boolean(confirmed);
+  if (confirmed) {
+    await admin.from(baseTable).delete().eq("id", confirmed.id); // cleanup, always
+  }
+  return { succeeded, failure: null };
+}
+
+/** Attempts an UPDATE of row.writeProbe.column to a per-call-unique
+ * probeValue, then re-reads via service_role to confirm whether it
+ * actually changed — a client-side "success" with 0 rows matched (RLS
+ * silently filtered the target) looks identical to a real deny unless you
+ * check the authoritative state afterward, which is exactly finding 2's
+ * point. */
+async function attemptUpdate(
+  client: SupabaseClient,
+  admin: SupabaseClient,
+  row: MatrixRow,
+  seededRowId: string,
+  probeValue: string,
+): Promise<boolean> {
+  const baseTable = baseTableFor(row);
+  await client.from(row.target).update({ [row.writeProbe.column]: probeValue }).eq("id", seededRowId);
+
+  const { data: confirmed } = await admin
+    .from(baseTable)
+    .select(row.writeProbe.column)
+    .eq("id", seededRowId)
+    .maybeSingle();
+  const currentValue = confirmed ? (confirmed as unknown as Record<string, unknown>)[row.writeProbe.column] : undefined;
+  return currentValue === probeValue;
+}
+
+/** Attempts a DELETE, then re-reads via service_role to confirm whether
+ * the row is actually gone. */
+async function attemptDelete(client: SupabaseClient, admin: SupabaseClient, row: MatrixRow, seededRowId: string): Promise<boolean> {
+  const baseTable = baseTableFor(row);
+  await client.from(row.target).delete().eq("id", seededRowId);
+  const { data: confirmed } = await admin.from(baseTable).select("id").eq("id", seededRowId).maybeSingle();
+  return !confirmed;
+}
+
+interface WriteCheckIdentity {
+  label: string;
+  client: SupabaseClient;
+  uid: string | null;
+  isOwner: boolean;
+}
+
+async function runWriteChecks(
+  admin: SupabaseClient,
+  anonClient: SupabaseClient,
+  userA: TestUser,
+  userB: TestUser,
+  row: MatrixRow,
+  seededRowId: string,
+): Promise<string[]> {
   const failures: string[] = [];
-  const seededRowId = await seedOwnedRow(admin, row, userA.id);
+  const identities: WriteCheckIdentity[] = [
+    { label: "anon", client: anonClient, uid: null, isOwner: false },
+    { label: "user A (owner)", client: userA.client, uid: userA.id, isOwner: true },
+    { label: "user B (non-owner)", client: userB.client, uid: userB.id, isOwner: false },
+  ];
 
-  // anon
-  const anonCount = await countVisibleRows(anonClient, row.target, seededRowId);
-  if (row.publicRead) {
-    // publicRead targets aren't used at M0 (all three rows are non-public);
-    // kept generic for future milestones per the matrix's own contract.
-  } else if (anonCount > 0) {
-    failures.push(`${row.target}: anon saw ${anonCount} row(s) — expected 0 (publicRead=false)`);
-  }
+  const ownerCanWrite = !row.adminOnly && row.ownerColumn !== null && row.ownerWritable;
 
-  if (row.adminOnly) {
-    // Both A and B must be rejected entirely — no owner-based access exists.
-    const aCount = await countVisibleRows(userA.client, row.target, seededRowId);
-    const bCount = await countVisibleRows(userB.client, row.target, seededRowId);
-    if (aCount > 0) failures.push(`${row.target}: adminOnly but non-admin user A saw ${aCount} row(s)`);
-    if (bCount > 0) failures.push(`${row.target}: adminOnly but non-admin user B saw ${bCount} row(s)`);
-    return failures;
-  }
-
-  if (row.ownerColumn && seededRowId) {
-    // User B must not see user A's owned row.
-    const bCount = await countVisibleRows(userB.client, row.target, seededRowId);
-    if (bCount > 0) {
-      failures.push(`${row.target}: non-owner user B saw ${bCount} row(s) owned by user A — expected 0`);
+  // INSERT — every identity attempts to insert a new row "as themselves."
+  for (const identity of identities) {
+    const expectSuccess = ownerCanWrite && identity.isOwner;
+    const { succeeded, failure } = await attemptInsert(identity.client, admin, row, identity.uid);
+    if (failure) {
+      failures.push(failure);
+    } else if (succeeded && !expectSuccess) {
+      failures.push(`${row.target}: ${identity.label} INSERT unexpectedly SUCCEEDED — expected denial`);
+    } else if (!succeeded && expectSuccess) {
+      failures.push(`${row.target}: ${identity.label} (owner) INSERT unexpectedly DENIED — ownerWritable=true expects this to succeed`);
     }
+  }
+
+  // UPDATE — every identity attempts to mutate the shared seeded row, each
+  // with a distinct probe value so we can attribute any actual change to
+  // exactly one identity's attempt, unambiguously.
+  for (const identity of identities) {
+    const expectSuccess = ownerCanWrite && identity.isOwner;
+    const probeValue = `mutated-by-${identity.label.replace(/[^a-z0-9]/gi, "-")}-${crypto.randomUUID()}`;
+    const succeeded = await attemptUpdate(identity.client, admin, row, seededRowId, probeValue);
+    if (succeeded && !expectSuccess) {
+      failures.push(`${row.target}: ${identity.label} UPDATE unexpectedly took effect — expected denial`);
+    } else if (!succeeded && expectSuccess) {
+      failures.push(`${row.target}: ${identity.label} (owner) UPDATE unexpectedly had no effect — ownerWritable=true expects this to succeed`);
+    }
+  }
+
+  // DELETE — non-owners first (row must still exist after each), owner
+  // last (only identity ever allowed to actually consume the row).
+  const deleteOrder = [...identities].sort((a, b) => Number(a.isOwner) - Number(b.isOwner));
+  for (const identity of deleteOrder) {
+    const expectSuccess = ownerCanWrite && identity.isOwner;
+    const succeeded = await attemptDelete(identity.client, admin, row, seededRowId);
+    if (succeeded && !expectSuccess) {
+      failures.push(`${row.target}: ${identity.label} DELETE unexpectedly SUCCEEDED — expected denial`);
+    } else if (!succeeded && expectSuccess) {
+      failures.push(`${row.target}: ${identity.label} (owner) DELETE unexpectedly DENIED — ownerWritable=true expects this to succeed`);
+    }
+    if (succeeded) break; // row is gone, nothing left to attempt against
+  }
+
+  return failures;
+}
+
+async function runRow(
+  admin: SupabaseClient,
+  anonClient: SupabaseClient,
+  userA: TestUser,
+  userB: TestUser,
+  row: MatrixRow,
+): Promise<string[]> {
+  const failures: string[] = [];
+  const seededRowId = await seedRow(admin, row, userA.id);
+
+  try {
+    // --- READ ---
+    const anonRead = await countVisibleRows(anonClient, row.target, seededRowId);
+    if (anonRead.failure) failures.push(anonRead.failure);
+    else if (!row.publicRead && anonRead.count > 0) {
+      failures.push(`${row.target}: anon saw ${anonRead.count} row(s) — expected 0 (publicRead=false)`);
+    }
+
+    if (row.adminOnly) {
+      const aRead = await countVisibleRows(userA.client, row.target, seededRowId);
+      const bRead = await countVisibleRows(userB.client, row.target, seededRowId);
+      if (aRead.failure) failures.push(aRead.failure);
+      else if (aRead.count > 0) failures.push(`${row.target}: adminOnly but non-admin user A saw ${aRead.count} row(s)`);
+      if (bRead.failure) failures.push(bRead.failure);
+      else if (bRead.count > 0) failures.push(`${row.target}: adminOnly but non-admin user B saw ${bRead.count} row(s)`);
+    } else if (row.ownerColumn) {
+      const bRead = await countVisibleRows(userB.client, row.target, seededRowId);
+      if (bRead.failure) failures.push(bRead.failure);
+      else if (bRead.count > 0) {
+        failures.push(`${row.target}: non-owner user B saw ${bRead.count} row(s) owned by user A — expected 0`);
+      }
+    }
+
+    // --- WRITE (finding 2) ---
+    failures.push(...(await runWriteChecks(admin, anonClient, userA, userB, row, seededRowId)));
+  } finally {
+    // Final cleanup — the row may already be gone (a correctly-allowed
+    // owner delete in a future ownerWritable=true table), so ignore errors.
+    await admin.from(baseTableFor(row)).delete().eq("id", seededRowId).then(
+      () => {},
+      () => {},
+    );
   }
 
   return failures;
@@ -135,6 +365,14 @@ async function runRow(admin: SupabaseClient, anonClient: SupabaseClient, userA: 
 async function main(): Promise<void> {
   const admin = makeSupabaseClient(SUPABASE_URL, SERVICE_ROLE_KEY!);
   const anonClient = makeSupabaseClient(SUPABASE_URL, ANON_KEY!);
+
+  console.log("rls-negative-auth: verifying every matrix target exists in the live schema...");
+  const existenceFailures = await assertTargetsExist(admin, matrix);
+  if (existenceFailures.length > 0) {
+    console.error("rls-negative-auth: FAIL — matrix references target(s) that don't exist");
+    for (const f of existenceFailures) console.error(`  ${f}`);
+    process.exit(1);
+  }
 
   console.log(`rls-negative-auth: seeding throwaway users A and B...`);
   const userA = await createTestUser(admin, "a");
@@ -155,7 +393,7 @@ async function main(): Promise<void> {
   }
 
   if (allFailures.length === 0) {
-    console.log(`rls-negative-auth: PASS (${matrix.length} target(s) checked, all deny-by-default as expected)`);
+    console.log(`rls-negative-auth: PASS (${matrix.length} target(s) checked — read AND write — all deny-by-default as expected)`);
     process.exit(0);
   }
 
