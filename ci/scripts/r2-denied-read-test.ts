@@ -23,7 +23,11 @@
  *
  * Exit code contract: 0 = pass (or honestly-skipped), 1 = fail.
  */
-import { S3Client, GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+// Deliberately no @aws-sdk/client-s3 import here: the unauthenticated-read
+// probe uses a plain fetch() against the raw bucket URL (no SDK/signing at
+// all — that's the point, it must fail with no credentials whatsoever),
+// and the mint-storage-url denial checks go through the Edge Function's own
+// HTTP API, not R2 directly.
 
 const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID;
 const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID;
@@ -60,7 +64,10 @@ async function testUnauthenticatedDirectRead(): Promise<string[]> {
   return failures;
 }
 
-async function callMintStorageUrl(jwt: string | null, body: unknown): Promise<{ status: number; json: any }> {
+async function callMintStorageUrl(
+  jwt: string | null,
+  body: unknown,
+): Promise<{ status: number; json: Record<string, unknown> }> {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/mint-storage-url`, {
     method: "POST",
     headers: {
@@ -69,7 +76,7 @@ async function callMintStorageUrl(jwt: string | null, body: unknown): Promise<{ 
     },
     body: JSON.stringify(body),
   });
-  const json = await res.json().catch(() => ({}));
+  const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   return { status: res.status, json };
 }
 

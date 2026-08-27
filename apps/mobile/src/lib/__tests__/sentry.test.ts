@@ -39,15 +39,17 @@ describe("scrubEvent", () => {
         values: [{ value: "Error for user 09171234567", type: "Error" }],
       },
     };
-    const scrubbed = scrubEvent(event);
-    expect((scrubbed.exception as any).values[0].value).toBe("Error for user [REDACTED_PHONE]");
+    const scrubbed = scrubEvent(event) as {
+      exception: { values: Array<{ value: string; type: string }> };
+    };
+    expect(scrubbed.exception.values[0]?.value).toBe("Error for user [REDACTED_PHONE]");
   });
 
   it("redacts PII from event.extra", () => {
     const event = { extra: { userEmail: "test@example.com", note: "fine" } };
-    const scrubbed = scrubEvent(event);
-    expect((scrubbed.extra as any).userEmail).toBe("[REDACTED_EMAIL]");
-    expect((scrubbed.extra as any).note).toBe("fine");
+    const scrubbed = scrubEvent(event) as { extra: { userEmail: string; note: string } };
+    expect(scrubbed.extra.userEmail).toBe("[REDACTED_EMAIL]");
+    expect(scrubbed.extra.note).toBe("fine");
   });
 
   it("redacts PII from event.breadcrumbs (array of objects)", () => {
@@ -57,18 +59,22 @@ describe("scrubEvent", () => {
         { message: "clicked button", category: "ui" },
       ],
     };
-    const scrubbed = scrubEvent(event);
-    expect((scrubbed.breadcrumbs as any)[0].message).toBe("logged in as [REDACTED_EMAIL]");
-    expect((scrubbed.breadcrumbs as any)[1].message).toBe("clicked button");
+    const scrubbed = scrubEvent(event) as {
+      breadcrumbs: Array<{ message: string; category: string }>;
+    };
+    expect(scrubbed.breadcrumbs[0]?.message).toBe("logged in as [REDACTED_EMAIL]");
+    expect(scrubbed.breadcrumbs[1]?.message).toBe("clicked button");
   });
 
   it("redacts PII from event.request", () => {
     const event = {
       request: { url: "https://api.example.com/users?email=a@b.com", headers: { "X-User": "09171234567" } },
     };
-    const scrubbed = scrubEvent(event);
-    expect((scrubbed.request as any).url).toContain("[REDACTED_EMAIL]");
-    expect((scrubbed.request as any).headers["X-User"]).toBe("[REDACTED_PHONE]");
+    const scrubbed = scrubEvent(event) as {
+      request: { url: string; headers: Record<string, string> };
+    };
+    expect(scrubbed.request.url).toContain("[REDACTED_EMAIL]");
+    expect(scrubbed.request.headers["X-User"]).toBe("[REDACTED_PHONE]");
   });
 
   it("does not touch fields outside the five scrubbed fields", () => {
