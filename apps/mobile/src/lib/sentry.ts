@@ -51,17 +51,30 @@ function redactDeep<T>(value: T): T {
  * unit testing without needing the Sentry SDK's event type at all — kept
  * loosely typed (Record<string, unknown>) so tests can pass minimal fake
  * event shapes instead of constructing a full Sentry.Event.
+ *
+ * Redacts the ENTIRE event structurally, recursively — deliberately NOT a
+ * field allow-list (remediation cycle 1, finding 8: the previous version
+ * only scrubbed message/exception/extra/breadcrumbs/request, which was
+ * fine the day it was written since nothing called Sentry.setUser() yet,
+ * but the moment M1's auth code uses that ordinary idiom
+ * (`Sentry.setUser({ email, id })`), the email ships in plaintext via
+ * `event.user` — exactly the R23 pattern security.md §0 exists to catch:
+ * a plausible, narrowly-scoped change elsewhere in the codebase silently
+ * defeats a security control here, with the old test suite staying green
+ * because it explicitly asserted "leaves fields outside the five alone").
+ *
+ * This is safe precisely because `redactDeep` is non-destructive for
+ * anything that doesn't match the email/phone patterns — it only ever
+ * REPLACES matching substrings and passes everything else through
+ * byte-for-byte unchanged. So there is no allow-list/deny-list to
+ * maintain and no future Sentry SDK field can be missed: `event_id`,
+ * `timestamp`, `platform`, `level`, `release`, and similar metadata are
+ * never going to match an email or PH-phone pattern in practice, and if
+ * something genuinely unexpected ever did, redacting it is the safe
+ * failure direction anyway.
  */
 export function scrubEvent<T extends Record<string, unknown>>(event: T): T {
-  const scrubbed: Record<string, unknown> = { ...event };
-
-  for (const field of ["message", "exception", "extra", "breadcrumbs", "request"] as const) {
-    if (field in scrubbed) {
-      scrubbed[field] = redactDeep(scrubbed[field]);
-    }
-  }
-
-  return scrubbed as T;
+  return redactDeep(event);
 }
 
 export function initSentry(): void {
