@@ -54,6 +54,43 @@ describe("scanSourceContent", () => {
     );
     expect(violations).toEqual([]);
   });
+
+  // Regression test for finding 4 (Review Gate, remediation cycle 1): the
+  // Review Gate planted a real-shaped service_role JWT under an innocuous
+  // name (CLIENT_KEY, not reachable from App.tsx) and got a clean PASS on
+  // the source scan, because it only ever matched identifier NAMES, never
+  // the literal VALUE. A key sitting unused/unreachable in source still
+  // leaks to anyone with repo access, which is exactly what the
+  // source-scan half of SEC-3 exists to prevent.
+  it("flags a hardcoded service-role-shaped JWT under an innocuous variable name (legacy JWT shape)", () => {
+    const fakeServiceRoleJwt =
+      "eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.abcdefghijklmnopqrstuvwx";
+    const violations = scanSourceContent(
+      "apps/mobile/src/lib/unused-constants.ts",
+      `const CLIENT_KEY = "${fakeServiceRoleJwt}";`,
+    );
+    expect(violations.length).toBeGreaterThan(0);
+    expect(violations.some((v) => v.includes("service-role key shape"))).toBe(true);
+  });
+
+  it("flags a hardcoded value matching the new-style sb_secret_ shape under an innocuous name", () => {
+    const violations = scanSourceContent(
+      "apps/mobile/src/lib/unused-constants.ts",
+      `const CLIENT_KEY = "sb_secret_abcdefghijklmnopqrstuvwx123";`,
+    );
+    expect(violations.length).toBeGreaterThan(0);
+    expect(violations.some((v) => v.includes("service-role key shape"))).toBe(true);
+  });
+
+  it("documented tradeoff: a legitimately inlined anon JWT also fails closed (can't distinguish role by shape alone)", () => {
+    // Same eyJ...eyJ...xyz shape as a service_role JWT — SERVICE_ROLE_VALUE_RE
+    // matches on shape, not on the decoded `role` claim. This is a known,
+    // accepted false-positive direction (fail closed), documented in
+    // check-bundle-keys.ts's scanSourceContent comment.
+    const fakeAnonJwt = "eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiJ9.abcdefghijklmnopqrstuvwx";
+    const violations = scanSourceContent("apps/mobile/src/lib/supabase.ts", `const k = "${fakeAnonJwt}";`);
+    expect(violations.length).toBeGreaterThan(0);
+  });
 });
 
 describe("stripJsComments", () => {

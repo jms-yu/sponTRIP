@@ -98,6 +98,30 @@ export function scanSourceContent(relPath: string, rawContent: string): string[]
     );
   }
 
+  // Finding 4 (remediation cycle 1): the source scan previously matched
+  // only identifier NAMES, never the key's actual VALUE shape — a real
+  // service_role JWT/secret hardcoded under an innocuous variable name
+  // (e.g. `const CLIENT_KEY = "eyJ..."`) sailed through this half of SEC-3
+  // even though it's exactly the kind of literal-in-source leak the
+  // "no hardcoded secrets" checklist item exists to catch, and it stays
+  // green even if the constant is never imported/reachable from App.tsx —
+  // anyone with repo access can still read it directly off disk.
+  //
+  // CAVEAT this can't fully solve: SERVICE_ROLE_VALUE_RE matches by JWT
+  // *shape*, not by role — a legitimately inlined anon-key JWT (same
+  // `eyJ...` shape) will also match and fail this check. That's a
+  // deliberate fail-closed tradeoff, not an oversight. A real fix would
+  // decode the JWT payload and assert the `role` claim isn't
+  // `service_role` (or isn't `anon`/`authenticated` for the inverse case);
+  // out of scope for this remediation pass.
+  SERVICE_ROLE_VALUE_RE.lastIndex = 0;
+  if (SERVICE_ROLE_VALUE_RE.test(content)) {
+    violations.push(
+      `${relPath}: contains a value matching a service-role key shape (sb_secret_... or a JWT) — ` +
+        `even if unused/unreachable, a key sitting in source leaks to anyone with repo access`,
+    );
+  }
+
   return violations;
 }
 
