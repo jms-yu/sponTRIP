@@ -759,3 +759,127 @@ Findings that change or constrain the plan:
      breakdown, out-of-scope list, founder responsibilities/costs — pricing
      still to be verified before any client-facing use — and decisions
      112–116) to proceed to `/spark-dev`, Milestone 0.
+
+---
+
+## 2026-08-28 — `/spark-dev` Milestone 0 — technical spec (spark-architect)
+
+119. **Repo layout locked: npm-workspaces monorepo**, TypeScript everywhere —
+     `apps/mobile` (Expo/RN, Jest via jest-expo), `apps/web` (Astro static
+     output → Cloudflare Pages, Vitest), `supabase/` (migrations + a
+     project-level `migrations_down/` convention Supabase's CLI doesn't
+     natively provide, seed, Deno Edge Functions under `supabase/functions`,
+     tested with `deno test`), `ci/scripts` (Node/TS via tsx, Vitest). No
+     Turborepo/pnpm — one less tool for a two-founder AI-assisted team to
+     debug. Full tree in the M0 technical spec (superseded nowhere; this
+     entry is the durable record).
+120. **Migration rollback convention, binding from M0 onward, not just this
+     milestone:** every `supabase/migrations/<ts>_<name>.sql` ships a paired
+     `supabase/migrations_down/<ts>_<name>.down.sql` that exactly reverses
+     it. `migrations_down/` is never read by `supabase migration up` — it's
+     read only by this project's own CI tooling
+     (`check-migration-pairs.ts` blocks a PR missing a pair;
+     `migration-reversibility-test.ts` actually executes the newest down
+     file against a freshly-migrated local Postgres, diffs the schema, then
+     re-applies the up file to prove idempotent re-appliability). This is
+     the mechanical answer to "databases don't roll back via git."
+121. **M0's three migrations decided:** (1) `enable_extensions` —
+     `pgcrypto`, trivially reversible; (2) `smoke_test_fixtures` — a
+     permanent (not torn down after M0) canary table/view: RLS enabled with
+     deliberately zero policies (proves SEC-1's deny-by-default is
+     Postgres's actual behavior, not an assumption) plus a
+     `security_invoker`-flagged view over it (proves SEC-4's flag actually
+     delegates RLS rather than just being set). Re-run by the SEC-2
+     negative-auth suite on every future PR as a regression canary, not a
+     one-time M0 artifact; (3) `scheduled_jobs` — `pg_cron` + `pg_net` +
+     a service-role-only `job_runs` ledger table backing INF-4, doubling as
+     the SEC-2 matrix's "admin-only table" pattern until M7's real
+     `is_admin` claim exists. Rollback note logged directly in the down
+     migration's own comment: dropping `pg_cron` there is safe only until
+     M8's RECUR-2 schedules real production recurrence jobs on it — a
+     future rollback of that migration needs its own review at that point,
+     flagged now so it isn't rediscovered the hard way later.
+122. **Four Edge Functions decided for M0, all Deno, all narrowly scoped —
+     no product endpoints invented:** `scheduled-smoke-ok` /
+     `scheduled-smoke-fail` (INF-4 proof pair, shared-secret auth, not user
+     JWT — cron-invoked only), `mint-storage-url` (INF-9's R2 gatekeeper —
+     the one imperative, non-RLS access-control code path
+     `security.md` §5 already accepts as a known/accepted design; M0's
+     exact rule: `general` bucket → any authenticated caller may mint a URL
+     scoped to their own `general/{uid}/...` prefix; `receipts` and
+     `verification` → unconditional 403 for everyone until a later
+     milestone adds real ownership/admin logic — no direct/public bucket
+     read is ever permitted), `send-test-push` (INF-7's physical-device
+     harness, shared-secret auth, a build-time diagnostic tool, not a
+     product endpoint, deleted or left dormant after later milestones add
+     real push triggers).
+123. **Canonical PostHog analytics event schema locked now** (INF-6), in
+     `apps/mobile/src/lib/analytics/events.ts`, as the single legal event
+     vocabulary every later milestone must use:
+     `user_signed_up` / `event_confirmed` / `event_confirmed_repeat` /
+     `event_no_show` / `event_cancelled_exempt` / `event_cancelled_non_exempt`.
+     The repeat-join funnel (the project's core success metric — decisions
+     23, 53, 116) is defined as the two PostHog-native events
+     `event_confirmed` → `event_confirmed_repeat`, deliberately avoiding
+     PostHog's less-robust property-based step deduping. The no-show/
+     cancellation events are locked now because plan.md §3.10 names them as
+     "instrument from Milestone 0" watch-list tells for K1 and R19, even
+     though no milestone before M2/M3/M6 has code that fires them yet. **M0
+     does not wire any real emission call site** — it proves the pipeline
+     via a fixture seeder pushing synthetic events through PostHog's HTTP
+     Capture API into a dedicated `ci-test`-tagged environment, checked
+     against a saved Insights funnel — because this schema can't be
+     backfilled if wrong and there's no real feature yet to test it against
+     honestly.
+124. **INF-4's real T+2min pg_cron proof is explicitly NOT a permanent CI
+     gate — logged so it isn't mistaken for one later.** pg_cron has no
+     one-shot scheduling primitive, so faithfully proving real wall-clock
+     firing can't be done in a fresh CI container without a genuine
+     multi-minute wait every PR. Resolution: the function's own
+     success/failure-recording logic (job_runs row correctness for both
+     the -ok and -fail paths) is covered by an automated integration test
+     that invokes the Edge Functions directly, every PR; the actual
+     pg_cron→T+2min wall-clock firing is a one-time manual proof against
+     the dev cloud Supabase project, done once during M0 build and logged
+     as evidence, not re-run automatically.
+125. **Environment recipe selected for Milestone 0/R — no single
+     spark-environment-protocol recipe matches this stack exactly.**
+     Adapted composite, not a forced fit: `mobile-expo`'s client-tier
+     progression taken as-is; the Supabase-specific dev/stage/prod project
+     separation pattern named under `web-vercel-supabase` adopted on its
+     own merits for the backend slice (Vercel itself doesn't apply here —
+     Cloudflare Pages does); the web surface's dev/stage/prod handling
+     applied straight from the protocol's generic principles, since no
+     named recipe covers a static-site/Pages target. Full recipe written to
+     `.spark/environment.md`. Flagged there as a candidate for a future
+     named `mobile-expo-supabase-cloudflare` recipe if this exact composite
+     recurs on another SPARK project. Key decisions inside it worth
+     surfacing here: one PostHog project and one Sentry project total
+     (environment-tagged, not three separate free-tier accounts, to avoid
+     fragmenting INF-6's funnel fixture data); R2 uses environment-prefixed
+     paths within the same three buckets rather than nine buckets (access
+     control lives in `mint-storage-url`, not bucket ACLs, so fewer buckets
+     costs nothing security-wise); OTA (`eas update`) vs. full native build
+     promotion rule decided now, before any code exists, specifically so it
+     isn't improvised ad hoc under deadline pressure later; Supabase Pro
+     Branching (per-PR ephemeral DB) noted as available but explicitly not
+     required at M0, to protect the $40 billing-alert headroom.
+126. **Full negative-authorization matrix mechanism decided (SEC-2), binding
+     for every milestone from here on, not just M0:**
+     `ci/scripts/rls-negative-auth/matrix.ts` is a data-driven array — one
+     row per table/view (`target`, `ownerColumn | null`, `publicRead`,
+     `adminOnly`). The runner seeds two throwaway users via the
+     service-role client, signs in as each for real access tokens, builds
+     anon/user-A/user-B Supabase JS clients, and asserts anon gets zero
+     rows unless `publicRead`, user B gets zero rows/no effect against user
+     A's rows, and `adminOnly` targets reject both. **Every milestone from
+     M1 onward is required to add its new tables to this same matrix
+     file** — this is the concrete mechanical structure that makes SEC-5's
+     downgrade to optional (decision 112) safe rather than a quiet
+     weakening.
+127. Full spec — repo tree, all three migrations' up/down SQL, all four Edge
+     Function contracts, the CI mechanical-check exit-code contracts, and
+     the AC-by-AC test-strategy table — held by the orchestrator and handed
+     directly to `spark-developer` for Phase 3 build; not fully duplicated
+     here to avoid drift between two copies. This entry is the durable
+     summary; the spec itself is ephemeral orchestration state.

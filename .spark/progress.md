@@ -1,7 +1,7 @@
 # Progress / Checkpoint
 
-current_command: /spark-plan
-current_phase: COMPLETE. Gate 1 APPROVED 2026-08-28 (decision 118), plan v0.6, 21.5 FTE-weeks. Next command: /spark-dev, starting at Milestone 0.
+current_command: /spark-dev
+current_phase: Milestone 0 (Scaffold & security baseline) — Phase 1 complete (spec + environment recipe written). M0 has no UI component, so Phase 2 (design spec) is skipped. Entering Phase 3 (build via spark-developer).
 last_updated: 2026-08-28
 
 ## Blockers
@@ -203,3 +203,20 @@ last_updated: 2026-08-28
 - 2026-08-28 — **GATE 1 APPROVED (decision 118).** Founder gave explicit final
   approval of plan v0.6 in full. `/spark-plan` is complete. Next: `/spark-dev`
   to begin Milestone 0 (scaffold, CI, security baseline, environment recipe).
+- 2026-08-28 — **`/spark-dev` STARTED, Milestone 0.** Phase 0 preconditions
+  verified (plan APPROVED, no mid-flight checkpoint, live: false so no
+  live-production rules apply). Repo had no `.git` (greenfield, matches
+  GREENFIELD detection at project start) — initialized on `main` with a
+  baseline commit of pre-existing `.spark/`, `.claude/`, and ideation docs
+  (no application code). Branch `milestone/00-scaffold-security-baseline`
+  created off `main`. Entering Phase 1: spark-architect for M0 technical
+  spec + environment recipe selection (writes `.spark/environment.md`).
+- 2026-08-28 — **Phase 1 COMPLETE.** spark-architect returned the M0 technical
+  spec (repo layout, 3 reversible migrations, 4 Edge Function contracts, CI
+  mechanical-check contracts, full AC→test-strategy mapping) and the
+  environment recipe. Summary recorded as decisions 119–127.
+  `.spark/environment.md` written (adapted composite: mobile-expo client
+  tier + generic-principles Supabase backend tiering + generic-principles
+  Cloudflare Pages web tiering — no single recipe matched exactly).
+  Checkpoint. M0 has no UI surface, so Phase 2 (spark-designer) is skipped
+  per the orchestrator's own rule. Entering Phase 3: spark-developer build.
