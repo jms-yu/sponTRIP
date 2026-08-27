@@ -411,3 +411,20 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 # declarative_schema_path = "./database"
 # JSON string passed through to pg-delta SQL formatting.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":80,\"commaStyle\":\"trailing\"}"
+
+# --- SponTRIP M0: per-function auth config ---
+# scheduled-smoke-ok/-fail and send-test-push are invoked with a shared
+# secret (x-cron-secret), never a Supabase user JWT — cron-invoked or
+# manual-harness functions, per the M0 spec. Disabling the gateway's own
+# JWT verification lets pg_net's net.http_post (and this manual proof)
+# reach them with just that header. mint-storage-url legitimately receives
+# a real user JWT, so it keeps the default (verify_jwt = true) for
+# defense-in-depth gateway-level validation in addition to its own check.
+[functions.scheduled-smoke-ok]
+verify_jwt = false
+
+[functions.scheduled-smoke-fail]
+verify_jwt = false
+
+[functions.send-test-push]
+verify_jwt = false
