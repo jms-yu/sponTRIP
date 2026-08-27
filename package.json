@@ -12,8 +12,9 @@
   },
   "scripts": {
     "lint": "eslint . --ext .ts,.tsx --max-warnings=0",
-    "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck -w apps/mobile && npm run typecheck -w ci/scripts && node -e \"console.log('NOTE: apps/web needs Node 22, see apps/web/.nvmrc (decision 130). Switch Node then run: npm run typecheck:web')\"",
+    "typecheck:web": "npm run typecheck -w apps/web",
+    "test": "npm run test -w apps/mobile && npm run test -w ci/scripts && node -e \"console.log('NOTE: apps/web needs Node 22, see apps/web/.nvmrc (decision 130). Switch Node then run: npm run test:web')\"",
     "test:mobile": "npm run test -w apps/mobile",
     "test:web": "npm run test -w apps/web",
     "test:ci-scripts": "npm run test -w ci/scripts",
