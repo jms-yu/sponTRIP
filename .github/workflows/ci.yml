@@ -10,12 +10,22 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  # Mixed Node versions across workspaces, deliberately (decision 130,
+  # 2026-08-28): astro@7.2.9 clears apps/web's HIGH/CRITICAL npm-audit
+  # advisories (unfixable on the astro@5.x line) but requires Node >=22.
+  # apps/mobile and ci/scripts stay on Node 20 LTS. See apps/web/.nvmrc,
+  # apps/web/astro.config.mjs, and .spark/environment.md.
   NODE_VERSION: "20"
+  NODE_VERSION_WEB: "22"
 
 jobs:
   lint:
-    name: Lint
+    name: Lint (Node 20 — apps/mobile, ci/scripts, and everything not apps/web)
     runs-on: ubuntu-latest
+    # ESLint itself doesn't execute Astro's runtime, so this could safely
+    # cover apps/web too — but excluded here to keep this job's Node
+    # version boundary literal and unambiguous. apps/web's own lint step
+    # runs under Node 22 in the web-node22 job below.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -23,11 +33,12 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
-      - run: npm run lint
+      - run: npx eslint apps/mobile ci/scripts --ext .ts,.tsx --max-warnings=0
 
   typecheck:
-    name: Typecheck
+    name: Typecheck (Node 20 — apps/mobile, ci/scripts)
     runs-on: ubuntu-latest
+    # apps/web's typecheck (astro check) requires Node 22 — see web-node22.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -39,8 +50,6 @@ jobs:
         run: npm run typecheck -w ci/scripts
       - name: Typecheck apps/mobile
         run: npm run typecheck -w apps/mobile
-      - name: Typecheck apps/web (astro check)
-        run: npm run typecheck -w apps/web
 
   test-ci-scripts:
     name: Test - ci/scripts (unit)
@@ -66,17 +75,31 @@ jobs:
       - run: npm ci
       - run: npm run test -w apps/mobile
 
-  test-web:
-    name: Test - apps/web (build + Vitest)
+  web-node22:
+    name: apps/web (Node 22 — lint, typecheck, build, test, its slice of npm audit)
     runs-on: ubuntu-latest
+    # apps/web is the ONE workspace pinned to Node 22 (decision 130) —
+    # astro@7.2.9 requires it to clear the HIGH/CRITICAL advisories
+    # unfixable on astro@5.x. Every other job in this workflow stays on
+    # Node 20 LTS (env.NODE_VERSION). See apps/web/.nvmrc and
+    # .spark/environment.md.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version: ${{ env.NODE_VERSION_WEB }}
           cache: npm
       - run: npm ci
-      - run: npm run test -w apps/web
+      - name: Lint apps/web
+        run: npx eslint apps/web --ext .ts,.tsx --max-warnings=0
+      - name: Typecheck apps/web (astro check)
+        run: npm run typecheck -w apps/web
+      - name: Build apps/web
+        run: npm run build -w apps/web
+      - name: Test apps/web (build + Vitest)
+        run: npm run test -w apps/web
+      - name: npm audit --audit-level=high (apps/web's slice, run under its own Node version)
+        run: npm audit --audit-level=high
 
   check-bundle-keys:
     name: SEC-3 - check-bundle-keys (real expo export)
@@ -227,8 +250,13 @@ jobs:
           POSTHOG_PROJECT_ID: ${{ secrets.POSTHOG_CI_TEST_PROJECT_ID }}
 
   npm-audit:
-    name: npm audit (--audit-level=high)
+    name: npm audit (--audit-level=high, Node 20, whole tree)
     runs-on: ubuntu-latest
+    # Covers the full unified lockfile (npm audit isn't meaningfully
+    # workspace-scoped — its results reflect the dependency tree, not the
+    # active Node runtime). apps/web's own slice is re-run under its
+    # correct Node 22 in the web-node22 job above; this job is the
+    # general whole-repo gate.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
