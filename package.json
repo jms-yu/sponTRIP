@@ -1,0 +1,37 @@
+{
+  "name": "sponTRIP",
+  "private": true,
+  "version": "0.0.0",
+  "description": "SponTRIP monorepo — Expo mobile client, Astro web surface, Supabase backend, CI mechanical-check scripts.",
+  "workspaces": [
+    "apps/*",
+    "ci/scripts"
+  ],
+  "engines": {
+    "node": ">=20 <21"
+  },
+  "scripts": {
+    "lint": "eslint . --ext .ts,.tsx --max-warnings=0",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:mobile": "npm run test -w apps/mobile",
+    "test:web": "npm run test -w apps/web",
+    "test:ci-scripts": "npm run test -w ci/scripts",
+    "ci:check-rls-enabled": "tsx ci/scripts/check-rls-enabled.ts",
+    "ci:check-security-invoker": "tsx ci/scripts/check-security-invoker.ts",
+    "ci:check-bundle-keys": "tsx ci/scripts/check-bundle-keys.ts",
+    "ci:check-migration-pairs": "tsx ci/scripts/check-migration-pairs.ts",
+    "ci:migration-reversibility": "tsx ci/scripts/migration-reversibility-test.ts",
+    "ci:rls-negative-auth": "tsx ci/scripts/rls-negative-auth/run.ts",
+    "ci:r2-denied-read": "tsx ci/scripts/r2-denied-read-test.ts"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.15.0",
+    "@typescript-eslint/parser": "^8.15.0",
+    "eslint": "^8.57.1",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.3.3",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}
