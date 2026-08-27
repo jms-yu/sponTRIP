@@ -20,7 +20,16 @@ recipe if this composite recurs on another project.
      end-to-end checks that need real external network endpoints (Expo
      Push, Resend, Sentry, PostHog, R2), which a local-only stack can't
      exercise.
-- **Web:** `astro dev` local server.
+- **Web:** `astro dev` local server. **Runs on Node >=22.12.0**, pinned via
+  `apps/web/.nvmrc` — deliberately different from the repo root's Node 20
+  LTS (`apps/mobile`, `ci/scripts`). Added post-M0 (decision 130, 2026-08-28):
+  `astro@5.18.2` carried HIGH/CRITICAL npm-audit advisories fixable only in
+  `astro@7.2.9` (no 6.x line exists), which requires Node 22. Founder chose
+  to accept a mixed-Node-version monorepo over weakening the audit gate or
+  leaving the advisories as documented risk. `npm audit --audit-level=high`
+  is clean as of that decision. See `.spark/security.md` §7 for the full
+  history and `.github/workflows/ci.yml` for how CI runs each workspace's
+  job under its correct Node version.
 - **Secrets:** Dev-tier Supabase anon + service_role keys, dev-tier
   Resend/Sentry/PostHog/R2/Expo credentials — all distinct from stage/prod,
   held in gitignored local `.env` files. The local-Docker CI job needs no

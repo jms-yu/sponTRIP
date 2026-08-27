@@ -883,3 +883,36 @@ Findings that change or constrain the plan:
      directly to `spark-developer` for Phase 3 build; not fully duplicated
      here to avoid drift between two copies. This entry is the durable
      summary; the spec itself is ephemeral orchestration state.
+
+---
+
+## 2026-08-28 — `/spark-dev` Milestone 0 — build complete, one founder decision surfaced pre-QA
+
+128. **M0 built and verified against a real local Supabase Docker stack**
+     (not just written): 3 migrations with tested rollbacks, 4 Deno Edge
+     Functions (11/11 tests), 8 CI mechanical-check scripts (SEC-1…4, INF-2,
+     INF-9, INF-6), Expo mobile scaffold (12/12 Jest tests incl. Sentry PII
+     scrubber), Astro web scaffold, full GitHub Actions pipeline +
+     Dependabot. Real pg_cron T+2min firing proven against the local stack
+     (substituted for the spec's "dev cloud project" step — no cloud
+     Supabase project exists yet). 11 commits on
+     `milestone/00-scaffold-security-baseline`. Full report in
+     `progress.md`'s Phase 3 checkpoint entry.
+129. **Astro/Node version conflict found and surfaced, not silently
+     resolved:** `astro@5.18.2` (used for `apps/web`) has real HIGH/CRITICAL
+     npm-audit advisories fixed only in `astro@7.2.9`, which requires
+     Node ≥22; M0's spec pinned Node 20 LTS repo-wide. The Developer left
+     CI's `npm audit --audit-level=high` gate unweakened rather than
+     suppressing it — meaning CI is genuinely red on this branch pending a
+     human call. Full exploitability analysis (why MEDIUM-in-practice today,
+     given `apps/web` is a single static route using none of the affected
+     directives) logged in `security.md` §7.
+130. **Founder decision: bump `apps/web` to Node 22**, keeping
+     `apps/mobile` and `ci/scripts` on Node 20 LTS (mixed Node versions
+     across workspaces, accepted as minor added CI/tooling complexity in
+     exchange for clearing the vulnerable Astro major cleanly, rather than
+     accepting the documented risk or weakening the audit gate). Routed
+     back to `spark-developer` to implement (Astro upgrade to 7.2.9, `.nvmrc`
+     handling for the web workspace, CI workflow Node-version-per-job
+     update) before QA runs, so QA doesn't burn a cycle on a
+     human-decision item rather than a code bug.

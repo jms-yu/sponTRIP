@@ -194,3 +194,43 @@ correctly stays red until a human makes this call — matching this project's
 posture (R23) rather than papering over a real advisory to get a green build.
 **Founder action needed:** decide (a)/(b)/(c) above; until then, `npm-audit`
 failing on `apps/web`'s Astro dependency chain is expected, not a regression.
+
+---
+
+#### RESOLVED — 2026-08-28, same day, decision 130
+
+Founder chose option (a): bump `apps/web` to Node >=22.12.0, keeping
+`apps/mobile` and `ci/scripts` on Node 20 LTS. Accepted mixed Node versions
+across workspaces as the tradeoff, specifically to clear the vulnerable Astro
+major rather than carry it as documented risk or weaken the audit gate.
+
+**What changed:**
+- `apps/web`'s `astro` dependency bumped `^5.18.2` → `^7.2.9` (clears every
+  advisory listed above — no config/API changes needed; `astro build` and
+  `astro check` both verified clean, 2/2 Vitest tests still pass).
+- `apps/web/.nvmrc` added (`22`), distinct from the repo-root `.nvmrc` (`20`).
+  `apps/web/package.json` given its own `"engines": {"node": ">=22.12.0"}`.
+- A second, unrelated HIGH/CRITICAL chain was discovered and fixed in the same
+  pass: our own `vitest` devDependency (both `apps/web` and `ci/scripts`, used
+  purely as a dev/test tool, never shipped) pulled an outdated `vite`/`esbuild`
+  carrying its own HIGH (`vite`: path traversal in optimized-deps `.map`
+  handling, Windows `server.fs.deny` bypass, NTLMv2 hash disclosure via
+  `launch-editor`) and CRITICAL (`vitest`: arbitrary file read/execution via
+  its UI server) advisories — separate from the Astro chain and not fixed by
+  the Astro bump alone. Fixed by bumping `vitest` `^2.1.4`/`^3.2.4` → `^4.1.11`
+  in both workspaces (`vitest@4` supports Node 20 and 22 alike, so this did
+  not need its own Node-version exception).
+- `.github/workflows/ci.yml`: `apps/web`'s lint/typecheck/build/test/its own
+  `npm audit` slice now run under Node 22 in a dedicated `web-node22` job;
+  every other job stays on Node 20.
+
+**Verified, not just changed:** `npm audit --audit-level=high` exits **0**
+under both Node 20 and Node 22 — confirmed by running it directly (not just
+trusting `npm install`'s summary line) in both environments. Remaining
+findings are **11 moderate-only** vulnerabilities (the `uuid` chain via
+`xcode`/`@expo/config-plugins`, a real transitive Expo SDK 57 dependency —
+pre-existing, unrelated to Astro, does not block `--audit-level=high`, no fix
+available without a major Expo downgrade). Zero HIGH or CRITICAL remain.
+
+This entry is kept (not deleted) as the finding's full history — see also
+`.spark/decisions.md` 130 and `.spark/environment.md`'s Dev/Web section.

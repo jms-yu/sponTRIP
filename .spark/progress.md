@@ -236,3 +236,10 @@ last_updated: 2026-08-28
   `milestone/00-scaffold-security-baseline`. `.spark/pr-draft.md` written.
   **Status: awaiting-acceptance, NOT marked done** — per spark-commit
   protocol, requires human-confirmed merge first. Entering QA/Review Gate.
+- 2026-08-28 — **Paused before QA**: `npm audit --audit-level=high` is
+  genuinely red on this branch (astro@5.18.2's HIGH/CRITICAL advisories,
+  fixed only in astro@7.2.9 which needs Node ≥22, vs. the repo's Node 20
+  pin) — a human decision, not a QA-fixable bug, so asked before spending a
+  build↔QA cycle on it. **Founder decided: bump `apps/web` to Node 22**
+  (decision 130), mobile/ci stay on Node 20. Resuming the same
+  spark-developer agent to implement, then proceeding to Phase 4 (QA).
