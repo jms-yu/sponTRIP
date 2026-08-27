@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { scanSourceContent, scanBundleContent, SERVICE_ROLE_VALUE_RE } from "../check-bundle-keys.js";
+import { scanSourceContent, scanBundleContent, stripJsComments, SERVICE_ROLE_VALUE_RE } from "../check-bundle-keys.js";
 
 describe("scanSourceContent", () => {
   it("passes clean source with only a safe EXPO_PUBLIC_ var", () => {
@@ -33,6 +33,44 @@ describe("scanSourceContent", () => {
       `const key = process.env.SUPABASE_SERVICE_ROLE_KEY;`,
     );
     expect(violations.some((v) => v.includes("SUPABASE_SERVICE_ROLE_KEY"))).toBe(true);
+  });
+
+  // Regression test: a real bug found while building M0 — a comment
+  // *explaining* this very rule (mentioning SUPABASE_SERVICE_ROLE_KEY by
+  // name, as good security documentation does) tripped the checker against
+  // itself. Comments must be stripped before scanning.
+  it("does NOT flag a comment that merely mentions SUPABASE_SERVICE_ROLE_KEY", () => {
+    const violations = scanSourceContent(
+      "apps/mobile/src/lib/supabase.ts",
+      `// Never reference SUPABASE_SERVICE_ROLE_KEY in this file.\nconst key = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;`,
+    );
+    expect(violations).toEqual([]);
+  });
+
+  it("does NOT flag a block comment mentioning a forbidden EXPO_PUBLIC_ identifier", () => {
+    const violations = scanSourceContent(
+      "apps/mobile/src/lib/supabase.ts",
+      `/* e.g. never name a var EXPO_PUBLIC_SERVICE_KEY */\nconst key = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;`,
+    );
+    expect(violations).toEqual([]);
+  });
+});
+
+describe("stripJsComments", () => {
+  it("strips a whole-line // comment", () => {
+    expect(stripJsComments("// a comment\nconst x = 1;")).toBe("\nconst x = 1;");
+  });
+
+  it("strips a trailing // comment", () => {
+    expect(stripJsComments("const x = 1; // trailing")).toBe("const x = 1; ");
+  });
+
+  it("strips a /* */ block comment", () => {
+    expect(stripJsComments("const x = 1; /* block */ const y = 2;")).toBe("const x = 1;  const y = 2;");
+  });
+
+  it("does NOT strip an https:// URL", () => {
+    expect(stripJsComments('const url = "https://example.com";')).toBe('const url = "https://example.com";');
   });
 });
 

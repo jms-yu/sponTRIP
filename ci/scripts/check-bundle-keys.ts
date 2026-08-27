@@ -34,6 +34,20 @@ const MOBILE_SRC_DIR = join(REPO_ROOT, "apps", "mobile");
 const FORBIDDEN_ENV_SUBSTRINGS = ["SERVICE", "SECRET"];
 const EXPO_PUBLIC_IDENTIFIER_RE = /EXPO_PUBLIC_[A-Z0-9_]*/g;
 const SERVICE_ROLE_IDENTIFIER_RE = /SUPABASE_SERVICE_ROLE_KEY/g;
+
+/** Strips JS/TS comments before scanning, so a comment that explains this
+ * very rule (e.g. "never reference SUPABASE_SERVICE_ROLE_KEY here") doesn't
+ * false-positive against itself. Deliberately simple/pragmatic (same spirit
+ * as check-rls-enabled.ts's stripSqlComments) rather than a full parser —
+ * this is our own source, not adversarial input. The `(^|[^:])` guard keeps
+ * "https://" URLs intact instead of treating them as line comments. */
+export function stripJsComments(code: string): string {
+  const withoutBlockComments = code.replace(/\/\*[\s\S]*?\*\//g, "");
+  return withoutBlockComments
+    .split("\n")
+    .map((line) => line.replace(/(^|[^:])\/\/.*$/, "$1"))
+    .join("\n");
+}
 // Legacy Supabase keys are JWTs (eyJ...); new-style secret keys look like
 // sb_secret_<random>. Either shape appearing verbatim in a client bundle is
 // a hard failure.
@@ -56,9 +70,12 @@ function walkFiles(dir: string, exts: string[], skipDirs: string[]): string[] {
   return out;
 }
 
-/** Pure logic, exported for unit testing — scans one file's text content. */
-export function scanSourceContent(relPath: string, content: string): string[] {
+/** Pure logic, exported for unit testing — scans one file's text content.
+ * Comments are stripped first (see stripJsComments) so a comment
+ * explaining this very rule doesn't false-positive against itself. */
+export function scanSourceContent(relPath: string, rawContent: string): string[] {
   const violations: string[] = [];
+  const content = stripJsComments(rawContent);
 
   for (const match of content.matchAll(EXPO_PUBLIC_IDENTIFIER_RE)) {
     const identifier = match[0];
