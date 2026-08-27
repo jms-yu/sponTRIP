@@ -1,0 +1,24 @@
+---
+// M0 placeholder route (INF-3). Proves the web surface deploys and is
+// reachable over HTTPS via Cloudflare Pages. Real routes (account
+// deletion, privacy policy, live-location link) are built in later
+// milestones per .spark/plan.md.
+const buildTime = new Date().toISOString();
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SponTRIP</title>
+    <meta name="description" content="SponTRIP — plans that actually happen." />
+  </head>
+  <body>
+    <main>
+      <h1>SponTRIP</h1>
+      <p>This is the SponTRIP web surface. The app itself is on mobile.</p>
+      <p data-testid="build-time">Built: {buildTime}</p>
+    </main>
+  </body>
+</html>
