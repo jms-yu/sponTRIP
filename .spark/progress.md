@@ -220,3 +220,19 @@ last_updated: 2026-08-28
   Cloudflare Pages web tiering — no single recipe matched exactly).
   Checkpoint. M0 has no UI surface, so Phase 2 (spark-designer) is skipped
   per the orchestrator's own rule. Entering Phase 3: spark-developer build.
+- 2026-08-28 — **Phase 3 (spark-developer build) COMPLETE.** Full M0 scope
+  built and verified against a real local Supabase Docker stack (not just
+  written): 3 migrations with tested rollbacks (INF-2), 4 Deno Edge
+  Functions (11/11 tests pass), 8 CI mechanical-check scripts covering
+  SEC-1..4/INF-2/INF-9, PostHog fixture seeder + funnel merge-test
+  (INF-6), Expo mobile scaffold (12/12 Jest tests — Sentry PII scrubber,
+  INF-5), Astro web scaffold (INF-3, hand-scaffolded — current Astro CLI
+  needs Node 22, this repo pins Node 20 LTS), full GitHub Actions
+  pipeline + Dependabot. Real pg_cron T+2min firing proven against the
+  local stack (no cloud project exists). One finding logged to
+  `security.md` §7 rather than silently resolved: Astro's security-patched
+  major needs Node 22, in tension with the Node 20 pin — CI's npm-audit
+  gate deliberately left unweakened. 11 commits on
+  `milestone/00-scaffold-security-baseline`. `.spark/pr-draft.md` written.
+  **Status: awaiting-acceptance, NOT marked done** — per spark-commit
+  protocol, requires human-confirmed merge first. Entering QA/Review Gate.
