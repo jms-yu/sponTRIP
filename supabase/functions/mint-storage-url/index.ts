@@ -39,6 +39,32 @@ const VALID_BUCKETS: Bucket[] = ["general", "receipts", "verification"];
 const VALID_OPERATIONS: Operation[] = ["read", "write"];
 const URL_TTL_SECONDS = 300; // 5 minutes — short-lived by design
 
+/**
+ * True if `key` could plausibly traverse out of its intended prefix once
+ * decoded/normalized downstream (e.g. by the WHATWG URL parser, which
+ * collapses `../` segments — including enough of them to pop the bucket
+ * name itself off the path — BEFORE signing). Checked on the raw key
+ * pre-decode AND on its percent-decoded form, so `%2e%2e%2f` and similar
+ * encoded variants don't slip through. Backslashes are rejected too since
+ * some parsers/proxies treat them as path separators.
+ *
+ * This is a defense-in-depth input check, not the only control — see the
+ * post-construction objectUrl.pathname re-verification in the handler,
+ * which is the actual authoritative gate.
+ */
+function containsPathTraversal(key: string): boolean {
+  if (key.includes("..") || key.includes("\\")) return true;
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(key);
+  } catch {
+    // Malformed percent-encoding — reject rather than guess.
+    return true;
+  }
+  if (decoded !== key && (decoded.includes("..") || decoded.includes("\\"))) return true;
+  return false;
+}
+
 function isValidBody(x: unknown): x is RequestBody {
   if (typeof x !== "object" || x === null) return false;
   const b = x as Record<string, unknown>;
@@ -47,6 +73,8 @@ function isValidBody(x: unknown): x is RequestBody {
     VALID_BUCKETS.includes(b.bucket as Bucket) &&
     typeof b.key === "string" &&
     b.key.length > 0 &&
+    !b.key.startsWith("/") &&
+    !containsPathTraversal(b.key) &&
     typeof b.operation === "string" &&
     VALID_OPERATIONS.includes(b.operation as Operation)
   );
@@ -124,6 +152,19 @@ export async function handler(req: Request): Promise<Response> {
   const method = operation === "write" ? "PUT" : "GET";
   const objectUrl = new URL(`${endpoint}/${bucketName}/${key}`);
   objectUrl.searchParams.set("X-Amz-Expires", String(URL_TTL_SECONDS));
+
+  // Belt-and-suspenders (finding 1, remediation cycle 1): the WHATWG URL
+  // parser normalizes ../ segments when objectUrl was constructed above —
+  // that normalization happens BEFORE signing, so a `key` that survived
+  // isValidBody's traversal check (or a future bug in it) could still have
+  // resolved to a different bucket/object once parsed as a URL. Re-verify
+  // the ACTUAL resulting pathname is still scoped to this bucket and this
+  // caller's own prefix immediately before signing — don't rely on input
+  // validation alone for the authoritative decision.
+  const expectedPathname = `/${bucketName}/${expectedPrefix}`;
+  if (!objectUrl.pathname.startsWith(expectedPathname)) {
+    return jsonResponse({ error: "invalid_key_scope" }, 403);
+  }
 
   const signed = await client.sign(
     new Request(objectUrl.toString(), { method }),

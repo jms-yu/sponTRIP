@@ -113,6 +113,28 @@ async function testMintStorageUrlDenials(): Promise<string[]> {
     if (verification.status !== 403 || verification.json?.error !== "location_not_available") {
       failures.push(`mint-storage-url for "verification" returned status=${verification.status} body=${JSON.stringify(verification.json)} — expected 403 location_not_available`);
     }
+
+    // Path-traversal regression (remediation cycle 1, finding 1): the
+    // Review Gate proved live that a `general`-bucket request with a `../`
+    // sequence long enough to pop the bucket name off the path defeated
+    // the old raw-string prefix check and returned a valid presigned URL
+    // for another user's object / receipts / verification. This suite
+    // previously ONLY exercised bucket: "receipts"/"verification" with
+    // key: "anything" — it would never have caught that. Assert a
+    // general-bucket traversal attempt is rejected outright (400,
+    // invalid_request), never minted.
+    const generalTraversal = await callMintStorageUrl(jwt, {
+      bucket: "general",
+      key: `${R2_ENV_PREFIX}/general/../receipts/some-receipt.jpg`,
+      operation: "read",
+    });
+    if (generalTraversal.status !== 400 || generalTraversal.json?.error !== "invalid_request") {
+      failures.push(
+        `mint-storage-url general-bucket path-traversal key returned status=${generalTraversal.status} ` +
+          `body=${JSON.stringify(generalTraversal.json)} — expected 400 invalid_request (a 200 here means a ` +
+          `presigned URL was minted for a path outside the caller's own prefix)`,
+      );
+    }
   } finally {
     await admin.auth.admin.deleteUser(created.user.id).catch(() => {});
   }
