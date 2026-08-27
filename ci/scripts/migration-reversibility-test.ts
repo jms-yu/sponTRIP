@@ -3,17 +3,32 @@
  * migration-reversibility-test.ts — INF-2 acceptance criterion, mechanically
  * enforced on every PR, forever (not a one-time M0 artifact).
  *
- * Steps (per the M0 technical spec):
+ * Steps, applied to EVERY migration in the repo, not just the newest one
+ * (remediation cycle 1, finding 9 — testing only the newest migration meant
+ * a `create function`/`create type`/`create materialized view` in an OLDER
+ * down file that forgets to drop it would pass silently forever once a
+ * newer migration existed on top of it):
  *  1. `supabase db reset` — applies every migration on a clean local DB.
- *  2. `pg_dump --schema-only` -> snapshot A.
- *  3. Execute the down file paired with the NEWEST migration via psql.
- *  4. `pg_dump --schema-only` -> snapshot B. Assert B == A minus exactly
- *     that migration's created objects (compared by pg_dump's own
- *     "-- Name: X; Type: Y" section blocks, not a raw line diff, so
- *     reordering noise doesn't produce false failures).
- *  5. Re-run the up file's SQL directly, dump again -> snapshot C, assert
- *     C's object-block set matches A's — proving idempotent re-apply
- *     (catches partial-rollback bugs).
+ *     Take snapshot A (the fully-migrated reference state).
+ *  2. Walk migrations NEWEST -> OLDEST, tearing down one at a time via its
+ *     own down file (reverse order because a later migration can depend on
+ *     an earlier one's objects, never the other way round). After each
+ *     down file: `pg_dump --schema-only`, assert the diff from the
+ *     PREVIOUS step matches exactly that migration's own created objects
+ *     (compared by pg_dump's own "-- Name: X; Type: Y" section blocks, not
+ *     a raw line diff, so reordering noise doesn't produce false
+ *     failures).
+ *  3. Once every migration is torn down, re-apply every up file OLDEST ->
+ *     NEWEST (the normal forward order), dump again, and assert the final
+ *     schema matches snapshot A exactly — proving the WHOLE chain is
+ *     idempotent end-to-end, not just the newest migration's own
+ *     down-then-up cycle.
+ *
+ * Object-type recognition (finding 9's second half): tables, views,
+ * extensions, functions, types, and materialized views. Function/type
+ * names can be overloaded/signature-qualified in pg_dump's own "Name:"
+ * field (e.g. "my_func(integer)") — matched by prefix, not exact equality,
+ * to handle that without needing full signature parsing.
  *
  * Requires Docker + the Supabase CLI local stack (`supabase start`) already
  * running, and the `supabase_db_<project_id>` container reachable via
@@ -123,23 +138,35 @@ function splitIntoBlocks(dump: string): Map<string, ObjectBlock> {
   return blocks;
 }
 
-/** True if the given object block "belongs to" a table/view/extension name
- * created by the migration under test — covering pg_dump's several ways of
- * naming dependent objects (the object itself, COMMENT ON EXTENSION blocks,
- * and table-qualified constraint/index names like "job_runs job_runs_pkey"). */
+/** True if the given object block "belongs to" a table/view/extension/
+ * function/type/materialized-view name created by the migration under
+ * test — covering pg_dump's several ways of naming dependent objects (the
+ * object itself, COMMENT ON EXTENSION blocks, table-qualified
+ * constraint/index names like "job_runs job_runs_pkey", and
+ * signature-qualified function/type names like "my_func(integer)"). */
 function blockBelongsToCreatedObject(block: ObjectBlock, createdObjectName: string): boolean {
   if (block.name === createdObjectName) return true;
   if (block.type === "COMMENT" && block.name === `EXTENSION ${createdObjectName}`) return true;
   if (block.name.startsWith(`${createdObjectName} `)) return true; // e.g. constraints/indexes/triggers
+  if (block.name.startsWith(`${createdObjectName}(`)) return true; // e.g. overloaded FUNCTION my_func(integer)
   return false;
 }
 
+/** Object types this test recognizes in an up migration's SQL. Extend this
+ * list (and the corresponding regex in extractCreatedObjectNames) whenever
+ * a migration introduces a new kind of CREATE statement — an unrecognized
+ * object type here means this test can't verify its down file actually
+ * removes it, which is exactly finding 9's original gap. */
 function extractCreatedObjectNames(upSql: string): string[] {
   const names: string[] = [];
   const patterns = [
     /create\s+table\s+(?:if\s+not\s+exists\s+)?public\.(\w+)/gi,
     /create\s+view\s+public\.(\w+)/gi,
-    /create\s+extension\s+(?:if\s+not\s+exists\s+)?(\w+)/gi,
+    /create\s+extension\s+(?:if\s+not\s+exists\s+)?"?([\w-]+)"?/gi,
+    /create\s+(?:or\s+replace\s+)?function\s+public\.(\w+)/gi,
+    /create\s+(?:or\s+replace\s+)?procedure\s+public\.(\w+)/gi,
+    /create\s+type\s+public\.(\w+)/gi,
+    /create\s+materialized\s+view\s+(?:if\s+not\s+exists\s+)?public\.(\w+)/gi,
   ];
   for (const pattern of patterns) {
     for (const match of upSql.matchAll(pattern)) {
@@ -149,71 +176,89 @@ function extractCreatedObjectNames(upSql: string): string[] {
   return names;
 }
 
+interface MigrationEntry {
+  upFile: string;
+  downFile: string;
+  upSql: string;
+  downSql: string;
+  createdObjectNames: string[];
+}
+
+function loadMigrations(): MigrationEntry[] {
+  const upFiles = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql")).sort();
+  return upFiles.map((upFile) => {
+    const downFile = upFile.replace(/\.sql$/, ".down.sql");
+    const upSql = readFileSync(join(MIGRATIONS_DIR, upFile), "utf-8");
+    const downSql = readFileSync(join(MIGRATIONS_DOWN_DIR, downFile), "utf-8");
+    return { upFile, downFile, upSql, downSql, createdObjectNames: extractCreatedObjectNames(upSql) };
+  });
+}
+
+/** Verifies that executing `migration.downSql` against the DB (currently
+ * in the state described by `before`) produces exactly `before` minus
+ * that migration's own created objects, with nothing else disturbed.
+ * Returns the new (post-down) block map so the caller can chain into the
+ * next migration's teardown, plus any failure messages. */
+function verifyOneRollback(migration: MigrationEntry, before: Map<string, ObjectBlock>): { after: Map<string, ObjectBlock>; failures: string[] } {
+  const failures: string[] = [];
+
+  execSqlFile(migration.downSql);
+  const after = splitIntoBlocks(schemaDump());
+
+  const removedKeys = [...before.keys()].filter((k) => !after.has(k));
+  for (const key of removedKeys) {
+    const block = before.get(key)!;
+    const belongsToMigration = migration.createdObjectNames.some((name) => blockBelongsToCreatedObject(block, name));
+    if (!belongsToMigration) {
+      failures.push(`[${migration.upFile}] Unexpected object removed by ${migration.downFile}: ${key}`);
+    }
+  }
+
+  for (const name of migration.createdObjectNames) {
+    const stillPresent = [...after.values()].some((block) => blockBelongsToCreatedObject(block, name));
+    if (stillPresent) {
+      failures.push(`[${migration.upFile}] Object "${name}" was NOT fully removed by ${migration.downFile}`);
+    }
+  }
+
+  const addedKeys = [...after.keys()].filter((k) => !before.has(k));
+  for (const key of addedKeys) {
+    failures.push(`[${migration.upFile}] ${migration.downFile} unexpectedly ADDED an object: ${key}`);
+  }
+
+  for (const [key, blockBefore] of before) {
+    if (!after.has(key)) continue; // already checked above
+    const blockAfter = after.get(key)!;
+    if (blockBefore.content !== blockAfter.content) {
+      failures.push(`[${migration.upFile}] Unrelated object "${key}" changed after running ${migration.downFile} (should be untouched)`);
+    }
+  }
+
+  return { after, failures };
+}
+
 function main(): void {
   console.log("migration-reversibility-test: resetting local DB (supabase db reset)...");
   execFileSync("supabase", ["db", "reset"], { cwd: REPO_ROOT, stdio: "inherit", shell: IS_WINDOWS });
 
-  const upFiles = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql")).sort();
-  const newestUpFile = upFiles[upFiles.length - 1];
-  if (!newestUpFile) throw new Error("No migrations found in supabase/migrations/");
-  const downFile = newestUpFile.replace(/\.sql$/, ".down.sql");
-  const downPath = join(MIGRATIONS_DOWN_DIR, downFile);
-  const upPath = join(MIGRATIONS_DIR, newestUpFile);
+  const migrations = loadMigrations();
+  if (migrations.length === 0) throw new Error("No migrations found in supabase/migrations/");
 
-  console.log(`migration-reversibility-test: target migration = ${newestUpFile}`);
+  console.log(`migration-reversibility-test: testing all ${migrations.length} migration(s), newest -> oldest...`);
+  console.log("migration-reversibility-test: dumping snapshot A (fully-migrated reference state)...");
+  const snapshotA = splitIntoBlocks(schemaDump());
 
-  const upSql = readFileSync(upPath, "utf-8");
-  const downSql = readFileSync(downPath, "utf-8");
-  const createdObjectNames = extractCreatedObjectNames(upSql);
-
-  console.log("migration-reversibility-test: dumping snapshot A (post-up)...");
-  const snapshotA = schemaDump();
-  const blocksA = splitIntoBlocks(snapshotA);
-
-  console.log(`migration-reversibility-test: executing down file ${downFile}...`);
-  execSqlFile(downSql);
-
-  console.log("migration-reversibility-test: dumping snapshot B (post-down)...");
-  const snapshotB = schemaDump();
-  const blocksB = splitIntoBlocks(snapshotB);
-
+  // Tear down NEWEST -> OLDEST: a later migration can depend on an
+  // earlier one's objects, never the other way round, so this is the only
+  // safe general order.
   const failures: string[] = [];
-
-  // Every block present in A but absent in B must correspond to one of the
-  // migration's created objects. Anything else missing means the down file
-  // took out more than it should have.
-  const removedKeys = [...blocksA.keys()].filter((k) => !blocksB.has(k));
-  for (const key of removedKeys) {
-    const block = blocksA.get(key)!;
-    const belongsToMigration = createdObjectNames.some((name) => blockBelongsToCreatedObject(block, name));
-    if (!belongsToMigration) {
-      failures.push(`Unexpected object removed by down file, not created by ${newestUpFile}: ${key}`);
-    }
-  }
-
-  // Every created object must actually have been removed (its own block,
-  // and any dependent blocks pg_dump lists separately, e.g. constraints).
-  for (const name of createdObjectNames) {
-    const stillPresent = [...blocksB.values()].some((block) => blockBelongsToCreatedObject(block, name));
-    if (stillPresent) {
-      failures.push(`Object "${name}" created by ${newestUpFile} was NOT fully removed by ${downFile}`);
-    }
-  }
-
-  // Nothing new should have appeared.
-  const addedKeys = [...blocksB.keys()].filter((k) => !blocksA.has(k));
-  for (const key of addedKeys) {
-    failures.push(`Down file unexpectedly ADDED an object: ${key}`);
-  }
-
-  // Unrelated objects must be byte-identical before/after (down didn't
-  // silently mutate something it shouldn't have touched).
-  for (const [key, blockA] of blocksA) {
-    if (!blocksB.has(key)) continue; // already checked above
-    const blockB = blocksB.get(key)!;
-    if (blockA.content !== blockB.content) {
-      failures.push(`Unrelated object "${key}" changed after running the down file (should be untouched)`);
-    }
+  let currentBlocks = snapshotA;
+  for (let i = migrations.length - 1; i >= 0; i--) {
+    const migration = migrations[i]!;
+    console.log(`migration-reversibility-test: rolling back ${migration.upFile} via ${migration.downFile}...`);
+    const { after, failures: rollbackFailures } = verifyOneRollback(migration, currentBlocks);
+    failures.push(...rollbackFailures);
+    currentBlocks = after;
   }
 
   if (failures.length > 0) {
@@ -221,26 +266,31 @@ function main(): void {
     for (const f of failures) console.error(`  ${f}`);
     process.exit(1);
   }
-  console.log("migration-reversibility-test: rollback verified — schema diff matches expected object set.");
+  console.log("migration-reversibility-test: every migration's rollback verified — schema diff matches expected object set at each step.");
 
-  console.log(`migration-reversibility-test: re-applying ${newestUpFile} to prove idempotent re-appliability...`);
-  execSqlFile(upSql);
+  // Re-apply OLDEST -> NEWEST (the normal forward order) to restore full
+  // state, then assert the final schema matches snapshot A exactly —
+  // proving the WHOLE chain is idempotent end-to-end, not just the newest
+  // migration's own down-then-up cycle.
+  console.log("migration-reversibility-test: re-applying all migrations oldest -> newest to prove idempotent re-appliability...");
+  for (const migration of migrations) {
+    execSqlFile(migration.upSql);
+  }
 
-  console.log("migration-reversibility-test: dumping snapshot C (post-re-up)...");
-  const snapshotC = schemaDump();
-  const blocksC = splitIntoBlocks(snapshotC);
+  console.log("migration-reversibility-test: dumping final snapshot...");
+  const finalBlocks = splitIntoBlocks(schemaDump());
 
   const reapplyFailures: string[] = [];
-  const allKeys = new Set([...blocksA.keys(), ...blocksC.keys()]);
+  const allKeys = new Set([...snapshotA.keys(), ...finalBlocks.keys()]);
   for (const key of allKeys) {
-    const inA = blocksA.has(key);
-    const inC = blocksC.has(key);
-    if (inA !== inC) {
-      reapplyFailures.push(`Object set mismatch after re-apply: "${key}" present in A=${inA}, C=${inC}`);
+    const inA = snapshotA.has(key);
+    const inFinal = finalBlocks.has(key);
+    if (inA !== inFinal) {
+      reapplyFailures.push(`Object set mismatch after full re-apply: "${key}" present in original=${inA}, final=${inFinal}`);
       continue;
     }
-    if (inA && inC && blocksA.get(key)!.content !== blocksC.get(key)!.content) {
-      reapplyFailures.push(`Object "${key}" differs after re-apply (down-then-up did not restore identical schema)`);
+    if (inA && inFinal && snapshotA.get(key)!.content !== finalBlocks.get(key)!.content) {
+      reapplyFailures.push(`Object "${key}" differs after full down-then-up chain (did not restore identical schema)`);
     }
   }
 
@@ -250,7 +300,7 @@ function main(): void {
     process.exit(1);
   }
 
-  console.log("migration-reversibility-test: PASS — up -> down -> up is clean and idempotent.");
+  console.log(`migration-reversibility-test: PASS — all ${migrations.length} migration(s)' down->up chain is clean and idempotent.`);
   process.exit(0);
 }
 
