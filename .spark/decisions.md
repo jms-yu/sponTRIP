@@ -916,3 +916,17 @@ Findings that change or constrain the plan:
      handling for the web workspace, CI workflow Node-version-per-job
      update) before QA runs, so QA doesn't burn a cycle on a
      human-decision item rather than a code bug.
+131. **QA (Phase 4) passed cleanly** — every runnable check green, exact
+     counts as expected, credential-gated items honestly self-skipped.
+     Full report in `progress.md`.
+132. **Review Gate (Phase 5) — NO-GO, remediation cycle 1 of 3.** QA
+     evidence integrity confirmed accurate on independent re-run; no scope
+     drift. NO-GO from real code defects the QA suite doesn't cover — most
+     seriously a live-proven path-traversal bypass in `mint-storage-url`
+     (any authenticated user can mint read/write URLs into other users'
+     files and into the `receipts`/`verification` buckets meant to be
+     unconditionally denied at M0) and a negative-authorization suite that
+     only tests reads, never writes. Full 11-finding list in `progress.md`'s
+     Phase 5 checkpoint entry. Findings 1–8 routed to `spark-developer` for
+     remediation; 9–11 recommended fixed in the same pass since M1's schema
+     will trip 9/10 (migration-reversibility blind spots) otherwise.

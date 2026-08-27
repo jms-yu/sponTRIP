@@ -243,3 +243,104 @@ last_updated: 2026-08-28
   build↔QA cycle on it. **Founder decided: bump `apps/web` to Node 22**
   (decision 130), mobile/ci stay on Node 20. Resuming the same
   spark-developer agent to implement, then proceeding to Phase 4 (QA).
+- 2026-08-28 — **Node 22 fix complete.** Astro bumped 5.18.2 to 7.2.9 in
+  `apps/web`, given its own `.nvmrc` (22) distinct from the repo root (20);
+  `.github/workflows/ci.yml` split into a dedicated `web-node22` job.
+  A second, unrelated HIGH/CRITICAL chain was found in the same pass
+  (`vitest` to `vite`, dev-tooling only, in both `apps/web` and
+  `ci/scripts`) and fixed by bumping `vitest` to `^4.1.11`. `npm audit
+  --audit-level=high` verified clean under both Node 20 and 22 by actually
+  running it. 11 moderate-only findings remain (Expo SDK 57's own
+  `uuid`/`xcode` chain, no fix available without a major Expo downgrade —
+  doesn't trip the `--audit-level=high` gate). 4 more commits.
+  `security.md` §7 and `pr-draft.md` updated with a resolution note, not
+  overwritten. `.spark/environment.md`'s Web dev-tier section updated in
+  place by the developer to document the Node split — reviewed, accurate,
+  kept as-is. **Entering Phase 4: QA.**
+- 2026-08-28 — **Phase 4 (QA) COMPLETE — everything runnable passed.**
+  Exact counts matched expectations: 12/12 mobile Jest, 2/2 web Vitest +
+  clean `astro build`/`astro check`, 26/26 ci/scripts Vitest, 11/11 Deno
+  Edge Function tests, `npm audit --audit-level=high` clean under both
+  Node 20 and 22 (11 moderate-only findings from Expo SDK 57's own
+  dependency chain, zero HIGH/CRITICAL). QA independently re-verified two
+  developer claims rather than trusting them: (1) broke a test and
+  confirmed `npm test` genuinely exits nonzero, reverted cleanly; (2) read
+  `check-bundle-keys.ts` to confirm it scans a real `npx expo export`
+  bundle output, not just source text. QA also read `ci.yml` directly to
+  confirm every mechanical check (SEC-1..4, INF-2, INF-9, migration-pairs,
+  npm-audit) is wired as a blocking job/step with no `continue-on-error` —
+  one caveat noted: whether these are configured as **required** GitHub
+  branch-protection status checks is a repo-settings question invisible
+  from the workflow file itself, flagged manual-only for the human.
+  Credential-gated items (INF-9's real R2 denial, INF-6's real PostHog
+  funnel, INF-7/8 push/email, INF-10 billing alert, INF-3's live HTTPS
+  domain, a real EAS build) all confirmed to honestly self-skip (loud
+  warning, not a silent pass) rather than being run. Zero failures.
+  **Entering Phase 5: Review Gate.**
+- 2026-08-28 — **Phase 5 (Review Gate) — NO-GO, remediation cycle 1 of 3.**
+  Opus/xhigh review of `main..HEAD` (15 commits). QA evidence integrity
+  **confirmed accurate** — every re-run claim held (migration-reversibility,
+  negative-auth matrix, all test counts, npm audit under both Node
+  versions, `ci.yml` blocking wiring all independently reproduced). No
+  scope drift found — nothing built outside INF-1…10/SEC-1…4, decision 130's
+  Node split implemented cleanly with no cross-contamination. **NO-GO is
+  from real defects the QA suite doesn't test for, not misreported
+  evidence.** 11 findings, most severe two:
+  1. **[HIGH] `mint-storage-url` path-traversal, proven live** — `../`
+     segments in the `key` field survive the prefix check and get resolved
+     by the URL parser before signing, letting any authenticated user mint
+     read+write URLs into another user's `general` objects and into
+     `receipts`/`verification` (supposed to be unconditional 403 for
+     everyone at M0). Neither existing test would catch it — both only
+     probe the naive case. Defeats the one non-RLS access-control path
+     `security.md` §5 knowingly accepted; becomes CRITICAL the moment real
+     R2 credentials land (itself a pending M0 item).
+  2. **[HIGH] SEC-1/SEC-2's "unwritable" half is never tested** — the
+     negative-auth suite only ever issues `SELECT`; no INSERT/UPDATE/DELETE
+     is attempted by anon or a non-owner anywhere. Live DB behavior is
+     currently correct (verified manually), but the mechanical control
+     `decisions.md` 112/126 relies on to make human RLS review safely
+     optional doesn't actually prove write-denial — and every table from M1
+     onward inherits this blind spot silently green.
+  Plus: [MEDIUM] the suite reports PASS for tables that don't exist
+  (swallows schema errors as "0 rows"); [MEDIUM] SEC-3's source scan misses
+  a hardcoded service_role literal under an innocuous variable name (bundle
+  scan does catch it); [MEDIUM] shared-secret comparison is timing-unsafe
+  on 3 functions; [MEDIUM] INF-4 has no committed `cron.schedule` artifact
+  (only the ledger + handlers — the manual T+2min proof isn't reproducible
+  by anyone else); [MEDIUM] "CI blocks a deliberately failing PR"/"SEC-2
+  blocks merge" aren't actually established without a GitHub branch-
+  protection ruleset, which nothing in this changeset configures or even
+  lists as a manual step; [MEDIUM] Sentry scrubber allow-lists 5 fields,
+  doesn't cover `user`/`tags`/`contexts` — a landmine for M1's
+  `Sentry.setUser()`; [LOW] migration-reversibility only tests the newest
+  migration and doesn't recognize functions/enums/materialized views;
+  [LOW] `enable_extensions.down.sql` would drop Supabase's own
+  platform-managed `pgcrypto`; hardening notes on CORS `*`, `send-test-push`
+  having no prod-exclusion mechanism, INF-8 having zero committed artifact,
+  and a root `package.json` engines mismatch against decision 130.
+  Routing findings 1–8 back to `spark-developer` (9–11 may be logged and
+  carried, but recommended fixed now since M1's schema will trip 9/10).
+- 2026-08-28 — **Remediation cycle 1 COMPLETE — all 11 findings fixed**
+  (1–8 required, 9–11 recommended, all addressed since none were high
+  effort and 9/10 would otherwise trip on M1's schema per the Review
+  Gate's own note). 11 commits on `milestone/00-scaffold-security-baseline`.
+  Every fix verified against the real local Supabase stack, not just
+  typechecked — including re-proving finding 1's traversal exploit is
+  closed with the reviewer's exact reproduction steps as new regression
+  tests, and sanity-checking finding 2's new write-denial tests by
+  temporarily adding permissive INSERT/UPDATE policies and confirming the
+  suite catches them before reverting. One test-isolation bug caught and
+  fixed in the same pass while adding finding 11's coverage (a test
+  deleting an env var without restoring it, silently corrupting later
+  tests in the same file via shared process-wide env state — not a
+  reported finding, found by actually running the new tests rather than
+  trusting them). Full finding-by-finding writeup delivered to the
+  coordinator separately. Local dev environment note for future sessions:
+  the Kong gateway container occasionally caches a stale upstream IP for
+  the auth container after a `supabase stop`/`start` cycle, surfacing as
+  502s / empty error objects from `auth.admin.createUser` — `docker
+  restart supabase_kong_SponTRIP` resolves it; not a code issue, confirmed
+  via Kong's own access logs ("connect() failed ... Connection refused"
+  against a stale IP). **Entering Phase 4: QA (remediation cycle 1 verify),
+  then Phase 5: Review Gate (cycle 2 of 3).**
