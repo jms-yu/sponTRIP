@@ -1,0 +1,12 @@
+-- M0 migration 1/3: enable_extensions
+-- Enables pgcrypto, used by gen_random_uuid() default values across the
+-- schema (see migration 2's smoke_test.id and job_runs.id).
+--
+-- Explicit `with schema extensions` matches Supabase's own platform
+-- convention (confirmed empirically during M0 build via
+-- migration-reversibility-test.ts) and keeps this migration deterministic
+-- regardless of which tool/session applies it — a plain SQL session with no
+-- explicit schema clause installs into "public" instead, which is both a
+-- pg_dump schema diff away from Supabase's own bootstrap state and pollutes
+-- the public namespace unnecessarily.
+create extension if not exists pgcrypto with schema extensions;
