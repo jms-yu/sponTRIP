@@ -1,0 +1,217 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Typecheck ci/scripts
+        run: npm run typecheck -w ci/scripts
+      - name: Typecheck apps/mobile
+        run: npm run typecheck -w apps/mobile
+      - name: Typecheck apps/web (astro check)
+        run: npm run typecheck -w apps/web
+
+  test-ci-scripts:
+    name: Test - ci/scripts (unit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run test -w ci/scripts
+
+  test-mobile:
+    name: Test - apps/mobile (Jest, jest-expo)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run test -w apps/mobile
+
+  test-web:
+    name: Test - apps/web (build + Vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run test -w apps/web
+
+  check-bundle-keys:
+    name: SEC-3 - check-bundle-keys (real expo export)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npx tsx ci/scripts/check-bundle-keys.ts
+
+  check-migration-pairs:
+    name: check-migration-pairs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npx tsx ci/scripts/check-migration-pairs.ts
+
+  check-rls-enabled:
+    name: SEC-1 - check-rls-enabled (static)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npx tsx ci/scripts/check-rls-enabled.ts
+
+  supabase-integration:
+    name: Supabase integration (migrations, SEC-2, SEC-4, Edge Functions)
+    runs-on: ubuntu-latest
+    # This is the CI-target path from .spark/environment.md: local Docker
+    # stack, no real external credentials needed. GitHub-hosted ubuntu
+    # runners have Docker pre-installed.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Start local Supabase stack
+        run: supabase start
+      - name: Export local Supabase env vars
+        id: supa-env
+        run: |
+          set -e
+          STATUS_JSON=$(supabase status -o json)
+          echo "SUPABASE_URL=$(echo "$STATUS_JSON" | jq -r '.API_URL')" >> "$GITHUB_ENV"
+          echo "SUPABASE_ANON_KEY=$(echo "$STATUS_JSON" | jq -r '.ANON_KEY // .PUBLISHABLE_KEY')" >> "$GITHUB_ENV"
+          echo "SUPABASE_SERVICE_ROLE_KEY=$(echo "$STATUS_JSON" | jq -r '.SERVICE_ROLE_KEY // .SECRET_KEY')" >> "$GITHUB_ENV"
+          echo "SUPABASE_DB_URL=$(echo "$STATUS_JSON" | jq -r '.DB_URL')" >> "$GITHUB_ENV"
+          echo "CRON_SHARED_SECRET=ci-test-cron-secret" >> "$GITHUB_ENV"
+
+      # INF-2: schema change applies via migration on a clean DB and is
+      # reversible. This resets the DB itself as its first step.
+      - name: migration-reversibility-test (INF-2)
+        run: npx tsx ci/scripts/migration-reversibility-test.ts
+
+      # SEC-4: every view has security_invoker=true, checked against the
+      # LIVE schema (re-reset to a clean, fully-migrated state first, since
+      # the reversibility test above deliberately leaves the DB mid-cycle).
+      - name: Reset DB to clean migrated state
+        run: supabase db reset
+      - name: check-security-invoker (SEC-4)
+        run: npx tsx ci/scripts/check-security-invoker.ts
+
+      # SEC-2: negative-authorization suite, blocks merge on every PR.
+      - name: rls-negative-auth suite (SEC-2)
+        run: npx tsx ci/scripts/rls-negative-auth/run.ts
+
+      # INF-4 proof pair: scheduled-smoke-ok / scheduled-smoke-fail Deno
+      # tests, invoking the handlers directly against the live local DB.
+      - name: Deno tests - scheduled-smoke-ok/-fail (INF-4)
+        working-directory: supabase/functions
+        run: deno test --allow-net --allow-env tests/scheduled_smoke.integration.test.ts
+
+      # INF-9 (auth-gating half): mint-storage-url's JWT/bucket-rule
+      # enforcement. The real-R2 denied-read half runs separately (see
+      # r2-denied-read-test job) since it needs real dev-tier R2 secrets.
+      - name: Deno tests - mint-storage-url (INF-9 auth gating)
+        working-directory: supabase/functions
+        run: deno test --allow-net --allow-env tests/mint_storage_url.test.ts
+
+      - name: Deno tests - send-test-push (auth gating)
+        working-directory: supabase/functions
+        run: deno test --allow-net --allow-env tests/send_test_push.test.ts
+
+  r2-denied-read-test:
+    name: INF-9 - r2-denied-read-test (real R2, secrets-gated)
+    runs-on: ubuntu-latest
+    # Honestly skips (exit 0 with a warning, not a silent pass) when the
+    # R2_* / SUPABASE_* repository secrets aren't configured — see the
+    # script itself. Configure these as repo secrets against the dev-tier
+    # R2 buckets + dev cloud Supabase project per .spark/environment.md for
+    # this to be a real gate.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npx tsx ci/scripts/r2-denied-read-test.ts
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          SUPABASE_URL: ${{ secrets.DEV_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.DEV_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.DEV_SUPABASE_SERVICE_ROLE_KEY }}
+
+  npm-audit:
+    name: npm audit (--audit-level=high)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm audit --audit-level=high

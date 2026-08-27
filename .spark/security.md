@@ -156,4 +156,41 @@ A gate that depends on someone remembering is not a gate.
 M2 and after M7 if performed. Tag each finding CRITICAL / HIGH / MEDIUM / LOW
 with its remediation and date.)*
 
-*(none yet)*
+### 2026-08-28 — M0 build — Astro's security-patched major requires Node 22, blocked by this project's Node 20 LTS pin
+
+**Severity tag: MEDIUM** (npm audit reports HIGH/CRITICAL by package metadata, but see
+exploitability context below — downgraded on the specific facts of this repo's
+current usage, not on convenience).
+
+`npm audit --audit-level=high` currently fails: `astro@5.18.2` (the newest 5.x
+release; no further 5.x patches exist) has transitive HIGH-severity advisories
+(several XSS vectors in `define:vars`/spread-prop/`transition:`/view-transition
+handling, a host-header SSRF in the prerendered error page, `sharp`'s inherited
+libvips CVEs) plus a CRITICAL advisory on `vitest` via `vite`/`esbuild`. **All of
+these are fixed only in `astro@7.2.9`, which requires Node >=22.12.0.** This
+project's `.nvmrc` pins Node 20 LTS per the M0 technical spec; no Astro 6.x line
+exists (5.x jumps straight to 7.x).
+
+**Why MEDIUM in practice, not HIGH, for THIS repo today:** the flagged XSS vectors
+require Astro directives (`define:vars`, `transition:*`, spread props on
+hydrated islands) that `apps/web`'s single static placeholder route does not
+use (`output: 'static'`, no SSR, no dynamic/untrusted content rendered). The
+esbuild advisories are dev-server-only (arbitrary requests/file-read against a
+locally-running `astro dev` process) — not a production build-artifact risk.
+`sharp`'s CVEs require processing untrusted images, which this repo does not do
+yet. Real exposure will change the moment any of those features are used —
+**re-evaluate before using `define:vars`, view transitions, or image processing
+via sharp in apps/web.**
+
+**Not remediated in M0; deliberately left for a human decision, not silently
+resolved or silently suppressed:** the fix requires either (a) bumping Node to
+22 for at least the `apps/web` workspace (mixed Node-version workspaces adds
+CI/tooling complexity), (b) waiting for Astro to backport fixes to a 5.x patch
+(none exists as of 2026-08-28), or (c) accepting this as a documented risk until
+one of the above changes. **The CI `npm-audit` job (`.github/workflows/ci.yml`)
+is intentionally left unweakened** (`--audit-level=high`, no ignore-list) so it
+correctly stays red until a human makes this call — matching this project's
+"tests-as-code-review is not sufficient, mechanical checks must actually block"
+posture (R23) rather than papering over a real advisory to get a green build.
+**Founder action needed:** decide (a)/(b)/(c) above; until then, `npm-audit`
+failing on `apps/web`'s Astro dependency chain is expected, not a regression.
