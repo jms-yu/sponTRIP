@@ -2,4 +2,13 @@
 -- NOT read by `supabase migration up` — this project's own rollback
 -- convention. Executed only by ci/scripts/migration-reversibility-test.ts
 -- and by a human running a real rollback against a Supabase project.
+--
+-- OWNERSHIP NOTE (remediation cycle 1, finding 10) — see the up
+-- migration's own comment for the full reasoning: pgcrypto is ALSO
+-- pre-installed by Supabase's platform bootstrap locally (same discovery
+-- as pg_net), but kept here (unlike pg_net) because it's a direct,
+-- permanent dependency of our own schema. Verified reversible/idempotent
+-- by migration-reversibility-test.ts. If a real cloud rollback is ever
+-- observed to break something else that depended on pgcrypto being
+-- present platform-side, remove this drop and mirror pg_net's treatment.
 drop extension if exists pgcrypto;

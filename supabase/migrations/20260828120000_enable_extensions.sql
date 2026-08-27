@@ -9,4 +9,21 @@
 -- explicit schema clause installs into "public" instead, which is both a
 -- pg_dump schema diff away from Supabase's own bootstrap state and pollutes
 -- the public namespace unnecessarily.
+--
+-- OWNERSHIP NOTE (remediation cycle 1, finding 10): like pg_net (see
+-- 20260828120200_scheduled_jobs.sql's comment), pgcrypto is ALSO
+-- pre-installed by Supabase's own platform bootstrap in the local Docker
+-- stack (confirmed via the same "already exists, skipping" NOTICE on first
+-- apply). Unlike pg_net, this migration keeps the create/drop pair rather
+-- than removing it, because pgcrypto is a DIRECT, permanent dependency of
+-- our own schema (gen_random_uuid() defaults on every table's id column) —
+-- not an indirect runtime dependency pg_cron happens to reach for. The
+-- round trip (create -> drop -> re-create) is verified idempotent by
+-- migration-reversibility-test.ts, which now exercises every migration's
+-- down file, not just the newest. Residual, undecidable-from-here risk:
+-- whether a REAL cloud Supabase project also pre-installs pgcrypto the
+-- same way the local Docker image's template database does, in which case
+-- dropping it via a real rollback could (briefly) affect something else
+-- relying on it platform-side. Not verified against a cloud project — no
+-- credentials exist for this build. Revisit if that's ever observed.
 create extension if not exists pgcrypto with schema extensions;
