@@ -57,13 +57,17 @@ product features or UI screens — those start at M1 per the M0 spec.
 
 ### Known findings / deliberately left for human action
 
-1. **`npm audit --audit-level=high` currently fails** on `astro@5.18.2`'s
-   transitive HIGH/CRITICAL advisories, fixed only in `astro@7.2.9` (requires
-   Node ≥22; this repo pins Node 20 LTS). Logged as a MEDIUM-in-practice
-   finding in `.spark/security.md` §7 with full reasoning — the CI gate is
-   deliberately left unweakened rather than silently suppressed. **Needs a
-   founder decision**: bump `apps/web` to Node 22, wait for an Astro 5.x
-   backport, or accept as a documented risk.
+1. ~~`npm audit --audit-level=high` currently fails on `astro@5.18.2`'s
+   transitive HIGH/CRITICAL advisories~~ — **RESOLVED same day, decision
+   130.** Founder chose to bump `apps/web` to Node ≥22.12.0 (astro@7.2.9,
+   which clears every flagged advisory) rather than accept the documented
+   risk or weaken the gate; `apps/mobile`/`ci/scripts` stay on Node 20 LTS.
+   A second, unrelated HIGH/CRITICAL chain in our own `vitest` devDependency
+   was found and fixed in the same pass (bumped to `^4.1.11`). `npm audit
+   --audit-level=high` now exits **0** under both Node versions — verified,
+   not just installed. 11 moderate-only findings remain (pre-existing Expo
+   SDK 57 `uuid`/`xcode` chain, unrelated, no fix available without a major
+   Expo downgrade). Full history in `.spark/security.md` §7.
 2. **R2 buckets, Cloudflare Pages, EAS credentials, real PostHog/Sentry
    accounts, Supabase billing alert, physical-device push/email delivery**
    all need real external credentials/accounts this agent doesn't have.
@@ -78,10 +82,12 @@ product features or UI screens — those start at M1 per the M0 spec.
 ### Test evidence
 
 - `apps/mobile`: 12/12 Jest tests pass (Sentry PII scrubber).
-- `apps/web`: 2/2 Vitest tests pass (`astro build` + output assertions);
-  `astro check` clean.
-- `ci/scripts`: 26/26 Vitest unit tests pass; `tsc --noEmit` clean across all
-  three workspaces.
+- `apps/web` (now Node 22, astro@7.2.9): 2/2 Vitest tests pass (`astro build`
+  + output assertions); `astro check` 0 errors/warnings/hints; `npm audit
+  --audit-level=high` exits 0.
+- `ci/scripts` (Node 20, vitest@4.1.11): 26/26 Vitest unit tests pass;
+  `tsc --noEmit` clean across all three workspaces. `npm audit
+  --audit-level=high` exits 0 under both Node 20 and Node 22.
 - Real local Supabase Docker stack: `migration-reversibility-test.ts` PASS,
   `check-security-invoker.ts` PASS, `rls-negative-auth/run.ts` PASS (and
   confirmed to catch real violations), 11/11 Deno Edge Function tests PASS.
