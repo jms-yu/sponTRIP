@@ -10,6 +10,7 @@
 // Records a job_runs row: running -> succeeded, with finished_at set.
 import { getSupabaseAdmin } from "../_shared/supabaseAdmin.ts";
 import { corsHeaders, handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { timingSafeEqual } from "../_shared/timingSafeEqual.ts";
 
 interface RequestBody {
   job_name: string;
@@ -31,7 +32,7 @@ export async function handler(req: Request): Promise<Response> {
 
   const cronSecret = Deno.env.get("CRON_SHARED_SECRET");
   const providedSecret = req.headers.get("x-cron-secret");
-  if (!cronSecret || providedSecret !== cronSecret) {
+  if (!cronSecret || !providedSecret || !(await timingSafeEqual(providedSecret, cronSecret))) {
     return jsonResponse({ error: "unauthorized" }, 401);
   }
 
