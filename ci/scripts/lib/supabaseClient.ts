@@ -7,14 +7,18 @@
  * transport or client construction throws immediately. Centralized here so
  * every CI script gets this for free instead of repeating the workaround.
  */
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { createClient } from "@supabase/supabase-js";
 import WebSocket from "ws";
 
+// No explicit return type annotation: SupabaseClient's schema-name generic
+// defaults to "public", but createClient's inferred return type here is
+// SupabaseClient<any, any, string, ...> — annotating forces a mismatch.
+// Letting TS infer keeps this correct for both this file and every caller.
 export function makeSupabaseClient(
   url: string,
   key: string,
   options: Parameters<typeof createClient>[2] = {},
-): SupabaseClient {
+) {
   return createClient(url, key, {
     ...options,
     realtime: {

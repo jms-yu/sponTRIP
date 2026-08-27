@@ -204,6 +204,28 @@ jobs:
           SUPABASE_ANON_KEY: ${{ secrets.DEV_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.DEV_SUPABASE_SERVICE_ROLE_KEY }}
 
+  posthog-funnel-merge-test:
+    name: INF-6 - PostHog repeat-join funnel (merge to main only)
+    runs-on: ubuntu-latest
+    # External-system integration test, deliberately NOT run on every PR
+    # (would flake ordinary PR merges on a third-party API) - only on push
+    # to main, per the M0 spec. Honestly skips without real PostHog
+    # ci-test-environment credentials configured - see the test file.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run test:merge -w ci/scripts
+        env:
+          POSTHOG_HOST: ${{ secrets.POSTHOG_HOST }}
+          POSTHOG_CAPTURE_API_KEY: ${{ secrets.POSTHOG_CI_TEST_CAPTURE_API_KEY }}
+          POSTHOG_PERSONAL_API_KEY: ${{ secrets.POSTHOG_CI_TEST_PERSONAL_API_KEY }}
+          POSTHOG_PROJECT_ID: ${{ secrets.POSTHOG_CI_TEST_PROJECT_ID }}
+
   npm-audit:
     name: npm audit (--audit-level=high)
     runs-on: ubuntu-latest

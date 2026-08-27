@@ -19,9 +19,14 @@
  *
  * Exit code contract: 0 = pass, 1 = fail (blocks merge).
  */
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { makeSupabaseClient } from "../lib/supabaseClient.js";
 import { matrix, type MatrixRow } from "./matrix.js";
+
+// Derived from makeSupabaseClient's own inferred return type rather than
+// importing SupabaseClient directly — see lib/supabaseClient.ts for why an
+// explicit SupabaseClient annotation there mismatches its inferred schema
+// generic.
+type SupabaseClient = ReturnType<typeof makeSupabaseClient>;
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? "http://127.0.0.1:54421";
 const ANON_KEY = process.env.SUPABASE_ANON_KEY;
