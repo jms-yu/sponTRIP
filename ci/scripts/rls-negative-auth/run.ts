@@ -176,40 +176,73 @@ async function countVisibleRows(
 }
 
 /** Attempts an INSERT as `client` (anon has actingUid=null and no owner
- * column value set). Returns whether the row actually landed, confirmed by
- * re-reading via the admin/service-role client afterward — never trusts
- * the mutating call's own report alone (finding 2's explicit requirement).
- * Cleans up any row it creates. */
+ * column value set), tagging the row with a per-call-unique `probeValue` in
+ * `row.writeProbe.column` so it can be found unambiguously afterward.
+ *
+ * Deliberately does NOT chain `.select()` onto the mutating call and does
+ * NOT trust its error/success report as the verdict (remediation cycle 2,
+ * finding 2 follow-up — QA proved live that the previous version's
+ * `.insert(payload).select("id").single()` was the bug: Postgres RLS
+ * requires `INSERT ... RETURNING` to ALSO satisfy a SELECT policy for the
+ * acting role, and every M0 matrix row has zero SELECT policies. That means
+ * a genuinely-denied INSERT and a genuinely-SUCCESSFUL INSERT whose
+ * RETURNING-read was separately denied produce the byte-identical
+ * "new row violates row-level security policy" error — the suite could not
+ * tell them apart and reported PASS either way, even with a real permissive
+ * INSERT policy in place. QA's live reproduction: a raw insert WITHOUT
+ * `.select()` got a real `201 Created` and the row persisted, while this
+ * function's old `.select()`-chained version reported "denied.")
+ *
+ * Fixed by mirroring exactly how attemptUpdate/attemptDelete already work:
+ * fire the mutation, then independently verify via a SEPARATE service-role
+ * read — immune to any client-side response masking, whether that masking
+ * comes from RLS denying the INSERT itself or from RLS denying only the
+ * RETURNING-read of an INSERT that actually succeeded. */
 async function attemptInsert(
   client: SupabaseClient,
   admin: SupabaseClient,
   row: MatrixRow,
   actingUid: string | null,
+  probeValue: string,
 ): Promise<{ succeeded: boolean; failure: string | null }> {
   const baseTable = baseTableFor(row);
-  const payload: Record<string, unknown> = { ...row.insertPayload };
+  const payload: Record<string, unknown> = { ...row.insertPayload, [row.writeProbe.column]: probeValue };
   if (row.ownerColumn && actingUid) payload[row.ownerColumn] = actingUid;
 
-  const { data, error } = await client.from(row.target).insert(payload).select("id").single();
+  // Bare insert — no .select() chained, so its own return value is never
+  // the verdict. The client library still needs SOME call to issue the
+  // INSERT, but what it reports (error or not) is deliberately ignored
+  // below in favor of the independent service-role read.
+  const { error } = await client.from(row.target).insert(payload);
 
-  if (error) {
-    const classification = classifyError(error);
-    if (classification === "denied") return { succeeded: false, failure: null };
-    return {
-      succeeded: false,
-      failure: `${row.target}: INSERT attempt errored unexpectedly (not a recognized RLS denial) — ` +
-        `code=${error.code ?? "unknown"} message="${error.message}"`,
-    };
-  }
-  if (!data) return { succeeded: false, failure: null };
+  // ALWAYS independently verify via service_role — authoritative,
+  // regardless of what the acting client's own insert call reported.
+  const { data: confirmed } = await admin
+    .from(baseTable)
+    .select("id")
+    .eq(row.writeProbe.column, probeValue)
+    .maybeSingle();
 
-  // Re-read via service_role — authoritative, doesn't trust the mutating
-  // call's own success report.
-  const { data: confirmed } = await admin.from(baseTable).select("id").eq("id", data.id).maybeSingle();
   const succeeded = Boolean(confirmed);
   if (confirmed) {
     await admin.from(baseTable).delete().eq("id", confirmed.id); // cleanup, always
   }
+
+  // The row did NOT land. If the client-reported error isn't a recognized
+  // RLS denial, that's still worth surfacing (finding 3's same "don't
+  // silently swallow an unexpected error as a pass" principle) — but it
+  // never overrides the authoritative succeeded=false verdict above.
+  if (!succeeded && error) {
+    const classification = classifyError(error);
+    if (classification !== "denied") {
+      return {
+        succeeded: false,
+        failure: `${row.target}: INSERT attempt errored unexpectedly (not a recognized RLS denial) — ` +
+          `code=${error.code ?? "unknown"} message="${error.message}"`,
+      };
+    }
+  }
+
   return { succeeded, failure: null };
 }
 
@@ -271,10 +304,13 @@ async function runWriteChecks(
 
   const ownerCanWrite = !row.adminOnly && row.ownerColumn !== null && row.ownerWritable;
 
-  // INSERT — every identity attempts to insert a new row "as themselves."
+  // INSERT — every identity attempts to insert a new row "as themselves,"
+  // each tagged with a distinct probe value so its fate can be looked up
+  // unambiguously via the independent service-role read inside attemptInsert.
   for (const identity of identities) {
     const expectSuccess = ownerCanWrite && identity.isOwner;
-    const { succeeded, failure } = await attemptInsert(identity.client, admin, row, identity.uid);
+    const probeValue = `inserted-by-${identity.label.replace(/[^a-z0-9]/gi, "-")}-${crypto.randomUUID()}`;
+    const { succeeded, failure } = await attemptInsert(identity.client, admin, row, identity.uid, probeValue);
     if (failure) {
       failures.push(failure);
     } else if (succeeded && !expectSuccess) {
