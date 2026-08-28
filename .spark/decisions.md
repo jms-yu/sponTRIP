@@ -930,3 +930,26 @@ Findings that change or constrain the plan:
      Phase 5 checkpoint entry. Findings 1–8 routed to `spark-developer` for
      remediation; 9–11 recommended fixed in the same pass since M1's schema
      will trip 9/10 (migration-reversibility blind spots) otherwise.
+133. **Remediation cycle 1 complete — all 11 findings fixed** (required
+     1–8 and recommended 9–11), each verified against the real local
+     Supabase stack, not just typechecked. Finding 1's exact live
+     traversal reproduction was turned into regression tests; finding 2's
+     new write-denial checks were sanity-checked by temporarily adding
+     real permissive policies and confirming detection before reverting.
+     11 commits. Full writeup in `progress.md`'s checkpoint log. Proceeding
+     to QA re-verification, then Review Gate cycle 2 of 3.
+134. **QA re-verification: 10/11 findings solid, finding 2 partially
+     fixed with a real remaining gap, proven live.** UPDATE/DELETE
+     write-denial testing is correct (independent service-role re-read).
+     INSERT is not: `attemptInsert()` chains `.select("id").single()` onto
+     the mutating call, and Postgres RLS makes an `INSERT ... RETURNING`
+     fail with the *same* error when the SELECT half lacks a policy as
+     when the INSERT itself is genuinely denied — true for all 3 M0 matrix
+     rows (zero SELECT policies each). QA proved it: planted a permissive
+     INSERT policy on `smoke_test`, suite still reported PASS; a raw
+     client sending the identical payload without `.select()` got `201`
+     and the row persisted (service-role-confirmed), reverted cleanly.
+     Binding for every table added from M1 onward per decision 126, so
+     routed straight back to `spark-developer` rather than waiting for
+     Review Gate to catch it — findings 1, 3–11 confirmed solid and not
+     re-litigated.

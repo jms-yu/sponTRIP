@@ -344,3 +344,21 @@ last_updated: 2026-08-28
   via Kong's own access logs ("connect() failed ... Connection refused"
   against a stale IP). **Entering Phase 4: QA (remediation cycle 1 verify),
   then Phase 5: Review Gate (cycle 2 of 3).**
+- 2026-08-28 — **Finding 2 follow-up fix complete.** QA's live
+  reproduction confirmed the root cause: `attemptInsert()` chained
+  `.select("id").single()` onto the mutating INSERT, and Postgres RLS
+  makes `INSERT ... RETURNING` fail identically whether the INSERT itself
+  was denied or only its RETURNING-read was denied (all 3 M0 matrix rows
+  have zero SELECT policies) — the suite couldn't distinguish a real deny
+  from a successful insert it merely couldn't read back, so a genuinely
+  permissive INSERT policy still reported PASS. Fixed by mirroring
+  attemptUpdate/attemptDelete's already-correct pattern: insert bare (no
+  `.select()`), tag with a per-identity probe value, verify independently
+  via a separate service-role read. Re-ran QA's exact sanity check against
+  the real local stack (planted `qa_temp_permissive_insert` on
+  `smoke_test`) — fixed suite now correctly FAILs loudly on both
+  `smoke_test` and `smoke_test_view`; reverted, confirmed zero leftover
+  rows and a clean PASS. Full suite re-verified: 29/29 ci/scripts Vitest,
+  19/19 Deno tests, root lint/typecheck clean. One commit
+  (`ddf9fee`). **Entering QA re-verification, then Review Gate cycle 2 of
+  3.**
