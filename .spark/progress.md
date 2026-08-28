@@ -1,8 +1,8 @@
 # Progress / Checkpoint
 
 current_command: /spark-dev
-current_phase: Milestone 0 (Scaffold & security baseline) — Phases 1-5 complete, Review Gate GO. Entering Phase 6 (close-out): scribe writes pr-draft.md + manual test checklist, then GATE 3 presented to the human.
-last_updated: 2026-08-28
+current_phase: Milestone 0 COMPLETE and marked DONE. Ready for /spark-document and the next milestone (M1 — App shell, IA, design system, accounts).
+last_updated: 2026-08-29
 
 ## Blockers
 
@@ -25,6 +25,16 @@ last_updated: 2026-08-28
   **M0** (Sign in with Apple, Expo Push on iOS, any EAS iOS build) — project.md
   §13 previously dated it "before iOS beta," corrected. Both store accounts
   should be started now, in parallel with development. Waiting on: user.
+  **2026-08-29 update:** still not started. Discussed during GATE 3 —
+  Individual enrollment (not Organization) is the faster path (~1-2 days
+  vs. a D-U-N-S-number wait for Organization) if the goal is just unblocking
+  iOS device testing (M0's Tests #5/#7, tracked done-with-follow-up in
+  `milestones.md`'s M0 section); Organization only matters if "Fonya
+  Technology" branding in the App Store matters for public launch, which is
+  a separate, later decision. No Mac exists on this team's setup, so there
+  is no iOS Simulator fallback — enrollment is the only path to any iOS
+  testing at all, ever, on the current hardware. Not blocking Android
+  development or most of M1.
 
 ## Checkpoint log
 
@@ -421,6 +431,82 @@ last_updated: 2026-08-28
   (`status = 'failed'`, `error = 'deliberate smoke-test failure'`) fired
   and recorded correctly, both jobs unscheduled after, `cron.job` confirmed
   empty. Continuing through the remaining items next.
+- 2026-08-29 — **Milestone 0 PR (#3) merged to `main` on GitHub, confirmed
+  by the founder.** All 11 required branch-protection checks passed for
+  real (including the newly-fixed PostHog job's cache-busting/HogQL logic,
+  exercised indirectly via the same CI config, though the merge-only
+  PostHog job itself was correctly skipped on the PR per its own design —
+  first real fire-test of that job happens on this push to `main`). Local
+  `main` fast-forwarded to match (87 files, ~26.4k lines). `milestones.md`
+  updated: M0 status is "merged, GATE 3 checklist still in progress" — NOT
+  `done` yet, since several manual checklist items remain (#3 in progress,
+  #5/#7 paused, #9/#10 not attempted). Continuing GATE 3 with a working
+  `main` now available for real deployments.
+- 2026-08-29 — **Test #3 (Cloudflare deploy) PASSED**, with two real
+  environment discoveries along the way, both verified against actual
+  Cloudflare docs rather than assumed: (1) Cloudflare has fully retired
+  the classic "Pages" onboarding UI in favor of Workers with static
+  assets — `wrangler.jsonc` added to the repo root (`name: spontrip`,
+  `assets.directory: ./apps/web/dist`), deployed via Cloudflare's
+  Git-connected Workers Builds (build command `npm install && npm run
+  build -w apps/web`, root directory `/` to preserve npm-workspace
+  hoisting, `NODE_VERSION=22` build variable). First real build succeeded
+  end to end (install/build/deploy all green); confirmed via direct curl
+  the deployed content matches exactly, including a real build timestamp.
+  (2) The zone had no DNS record at all for the bare `spontrip.app` root
+  (only Resend's `send.` subdomain records existed) — Workers Routes
+  intercept traffic at Cloudflare's edge but still need *something* for
+  DNS to resolve to first. Fixed with the standard placeholder pattern: a
+  proxied `A` record for `@` pointing to `192.0.2.1` (a reserved,
+  never-actually-contacted address), plus a Workers Route
+  `spontrip.app/*` -> the `spontrip` Worker (corrected from Cloudflare's
+  auto-suggested `*.spontrip.app/*`, which only matches subdomains, not
+  the bare root). Verified end-to-end: `https://spontrip.app` returns a
+  real 200 with valid TLS and correct content (confirmed via curl bypassing
+  a sandbox-local DNS quirk, and by the founder directly in an Incognito
+  browser window — a non-incognito window briefly showed a false negative
+  from stale local Chrome DNS caching, unrelated to the actual deployment).
+- 2026-08-29 — **Test #9 (R2 denied-read) PASSED.** Founder created a
+  Cloudflare R2 subscription (free tier, $0 due now, only billed past
+  10GB/1M-Class-A/10M-Class-B monthly free limits) and three buckets
+  (`general`, `receipts`, `verification`, Automatic/Asia-Pacific location
+  matching the PH user base, Standard storage class). Created a scoped
+  **Account API Token** (not a User token — chosen deliberately so the
+  credential represents the service, not a personal login, and keeps
+  working independent of account membership changes) restricted to
+  exactly those three buckets (least-privilege, same habit as the
+  PostHog key). Ran `ci/scripts/r2-denied-read-test.ts` for real against
+  live R2 + the local Supabase stack: `PASS — unauthenticated direct
+  reads denied, receipts/verification always 403` — both AC halves
+  confirmed (no public bucket access at all; `mint-storage-url` denies
+  the restricted buckets regardless of caller). Credentials added as 6
+  GitHub repository secrets so `INF-9 - r2-denied-read-test` becomes a
+  real, permanent every-PR gate (previously honest-skipping).
+- 2026-08-29 — **Test #10 (billing alert) — treated as satisfied by a
+  safer equivalent, not the literal $40 alert.** Founder created the
+  project's first real cloud Supabase project. Discovered it's on the
+  Free plan (no payment method on file), which has no dollar-based
+  billing at all — protection comes from a spend cap (already enabled)
+  that keeps the project at genuine $0 risk rather than an after-the-fact
+  alert. Upgrading to Pro just to satisfy the literal AC would cost
+  ~$25/mo+, half the project's entire $50/mo total budget ceiling.
+  Founder decided to stay on Free tier for now (decision 140) — revisit
+  the real $40 alert if/when a paid plan is actually needed for
+  stage/prod. Not a failure, a correctly-adapted equivalent.
+- 2026-08-29 — **MILESTONE 0 MARKED DONE.** Final tally: 11 of 13 GATE 3
+  manual checklist items passed with real evidence (accounts created,
+  real infrastructure connected, several genuine bugs found and fixed
+  along the way — not just code review). #5 (Sentry device check) and #7
+  (push notification) carried forward as an explicit, tracked follow-up
+  pending Apple Developer Program enrollment (not yet started; founder
+  briefed on Individual-vs-Organization tradeoff, leaning Individual for
+  speed). #12 (SEC-1..4 CI-tested) and #13 (Apple/Google Play account
+  reminders) were confirmation-only, no action needed. `milestones.md`'s
+  M0 section updated with the full status and both carried-forward items,
+  so this isn't lost. Founder explicitly chose to close the milestone now
+  rather than hold it open on the two Apple-blocked items, since nothing
+  else in the plan depends on them. **Ready for `/spark-document` and
+  Milestone 1 (App shell, IA, design system, accounts).**
 - 2026-08-28 — **Tests #5 (Sentry) and #7 (push notification) PAUSED, not
   failed.** Real blocker found and worked through methodically: Jest can't
   prove real Sentry delivery (native SDK disabled in its mocked RN
