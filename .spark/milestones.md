@@ -51,9 +51,13 @@ estimate from M0 onward — see the calendar-week-8 checkpoint below.
 
 ## M0 — Scaffold & security baseline · 2.0 FTE-wk
 
-**Status: awaiting-acceptance** (2026-08-28) — built, QA'd, and Review-Gate
-GO'd (2 remediation cycles of 3 allowed; see `decisions.md` 119–139). Not
-`done` until the founder confirms the PR merge, per spark-commit protocol.
+**Status: merged, GATE 3 checklist still in progress** (2026-08-29) — built,
+QA'd, Review-Gate GO'd (2 remediation cycles of 3 allowed; see
+`decisions.md` 119–139), and the real PR (#3) merged to `main` on
+2026-08-29 after extensive real-world manual testing (see
+`.spark/progress.md`'s 2026-08-28/29 entries). **Not marked `done` yet** —
+several manual checklist items remain (#3 Cloudflare deploy in progress,
+#5/#7 paused on Apple Developer enrollment, #9/#10 not yet attempted).
 Two MEDIUM follow-ups logged in `security.md` §7 to fix at M1 kickoff
 (`ownerWritable` INSERT semantics; Edge Function test-file CI wiring).
 

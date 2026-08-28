@@ -421,6 +421,17 @@ last_updated: 2026-08-28
   (`status = 'failed'`, `error = 'deliberate smoke-test failure'`) fired
   and recorded correctly, both jobs unscheduled after, `cron.job` confirmed
   empty. Continuing through the remaining items next.
+- 2026-08-29 — **Milestone 0 PR (#3) merged to `main` on GitHub, confirmed
+  by the founder.** All 11 required branch-protection checks passed for
+  real (including the newly-fixed PostHog job's cache-busting/HogQL logic,
+  exercised indirectly via the same CI config, though the merge-only
+  PostHog job itself was correctly skipped on the PR per its own design —
+  first real fire-test of that job happens on this push to `main`). Local
+  `main` fast-forwarded to match (87 files, ~26.4k lines). `milestones.md`
+  updated: M0 status is "merged, GATE 3 checklist still in progress" — NOT
+  `done` yet, since several manual checklist items remain (#3 in progress,
+  #5/#7 paused, #9/#10 not attempted). Continuing GATE 3 with a working
+  `main` now available for real deployments.
 - 2026-08-28 — **Tests #5 (Sentry) and #7 (push notification) PAUSED, not
   failed.** Real blocker found and worked through methodically: Jest can't
   prove real Sentry delivery (native SDK disabled in its mocked RN
