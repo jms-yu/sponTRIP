@@ -27,7 +27,7 @@ jobs:
     # version boundary literal and unambiguous. apps/web's own lint step
     # runs under Node 22 in the web-node22 job below.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -40,7 +40,7 @@ jobs:
     runs-on: ubuntu-latest
     # apps/web's typecheck (astro check) requires Node 22 — see web-node22.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -55,7 +55,7 @@ jobs:
     name: Test - ci/scripts (unit)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -67,7 +67,7 @@ jobs:
     name: Test - apps/mobile (Jest, jest-expo)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -84,7 +84,7 @@ jobs:
     # Node 20 LTS (env.NODE_VERSION). See apps/web/.nvmrc and
     # .spark/environment.md.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION_WEB }}
@@ -105,7 +105,7 @@ jobs:
     name: SEC-3 - check-bundle-keys (real expo export)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -117,7 +117,7 @@ jobs:
     name: check-migration-pairs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -129,7 +129,7 @@ jobs:
     name: SEC-1 - check-rls-enabled (static)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -144,7 +144,7 @@ jobs:
     # stack, no real external credentials needed. GitHub-hosted ubuntu
     # runners have Docker pre-installed.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -212,7 +212,7 @@ jobs:
     # R2 buckets + dev cloud Supabase project per .spark/environment.md for
     # this to be a real gate.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -236,7 +236,7 @@ jobs:
     # ci-test-environment credentials configured - see the test file.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -258,7 +258,7 @@ jobs:
     # correct Node 22 in the web-node22 job above; this job is the
     # general whole-repo gate.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
