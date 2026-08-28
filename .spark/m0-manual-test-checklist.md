@@ -36,29 +36,31 @@ covers what requires real external accounts, physical devices, or repository set
 
 ## 2. Schema change applies cleanly and is reversible
 
+There's already a real automated test for this in the codebase — no need to
+hand-run `pg_dump`/`psql` commands. It does everything a manual check would
+(reset the DB, apply all migrations, roll each one back newest-to-oldest,
+diff the schema at every step, then re-apply everything to prove it's
+repeatable), and it's the exact same script CI runs on every pull request.
+
 **What to do:**
-1. On your local machine, ensure the Supabase Docker stack is running and clean (no prior migrations applied).
-2. Run `supabase migration up` against the local stack.
-3. Verify all three migrations apply without error:
-   - `enable_extensions`
-   - `smoke_test_fixtures`
-   - `scheduled_jobs`
-4. Dump the schema: `pg_dump -h 127.0.0.1 -p 54322 -U postgres postgres > schema_up.sql 2>/dev/null` (password: `postgres`).
-5. Run the rollback in reverse order:
-   - `supabase migration down 3` (most recent first) and note success, repeat for the 2nd and 3rd.
-   - Or manually: `psql -h 127.0.0.1 -p 54322 -U postgres postgres < supabase/migrations_down/[timestamp]_scheduled_jobs.down.sql`, then repeat for the other two.
-6. Dump the schema again: `pg_dump ... > schema_down.sql`.
-7. Re-apply the migrations: `supabase migration up` again.
-8. Dump once more: `pg_dump ... > schema_reup.sql`.
-9. Verify: `diff schema_up.sql schema_reup.sql` should be empty (no changes between up and re-up).
+1. Make sure the local Supabase stack is running: `supabase start` (or
+   confirm it already is with `supabase status`).
+2. From the repo root, run:
+   ```bash
+   npx tsx ci/scripts/migration-reversibility-test.ts
+   ```
+3. Read the output — it narrates each step (resetting the DB, applying all
+   3 migrations, rolling each back, re-applying).
 
 **What a pass looks like:**
-- All three migrations apply without error.
-- The down migrations execute without error.
-- The schema dump after up, after down, and after re-up are identical (diff is empty).
-- No tables, functions, or views are dropped unexpectedly.
+- The last line reads: `PASS — all 3 migration(s)' down->up chain is clean
+  and idempotent.`
+- No `FAIL` or uncaught error anywhere in the output.
 
-**Credential/device needed:** Local Supabase Docker stack (no external account).
+**Credential/device needed:** Local Supabase Docker stack (no external
+account). Note: `supabase status` reports the local database port
+dynamically (commonly `54422`, but confirm with `supabase status` rather
+than assuming — it can differ per machine/project).
 
 ---
 
