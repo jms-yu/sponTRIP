@@ -166,6 +166,58 @@ FAILs loudly on both affected tables; reverted clean.
 - Deliberately-failing-test simulation confirmed `npm test` exits non-zero
   (the CI-blocking mechanism).
 
+### GATE 3 — real-world manual testing (2026-08-28/29)
+
+Beyond the automated QA/Review Gate passes above, the founder walked through
+the manual test checklist with real accounts and real infrastructure —
+several items surfaced genuine issues no amount of code review could have
+caught, since they only appear against real third-party services:
+
+- **PASSED, with a real bug found and fixed:** the PostHog funnel test
+  (`posthog-funnel.merge-test.ts`) had never run against a real PostHog
+  project before now — QA/Review Gate correctly couldn't, for lack of
+  credentials. First real run failed. Root-caused to three compounding
+  issues (Query API cache-busting needing `force_blocking` not `blocking`;
+  `FunnelsQuery` itself unreliable even with that fix, replaced with a
+  direct HogQL count query; real ingestion lag up to several minutes on a
+  fresh project). All three fixed in one commit, verified with a full live
+  end-to-end run: **PASS**.
+- **PASSED, with a real gap found and fixed:** password-reset email (INF-8)
+  had zero working SMTP configuration in any environment — `[auth.email.smtp]`
+  was entirely commented out. Founder created a Resend account and verified
+  `spontrip.app` as a sending domain; wired real SMTP into
+  `supabase/config.toml` (reads `RESEND_API_KEY` from `supabase/.env`,
+  gitignored, never committed). One snag found and fixed via the auth
+  container's own logs: Resend's actual verified domain is the root
+  `spontrip.app`, not the `send.spontrip.app` hostname that appears in its
+  DNS records — sending from the wrong one gets a 550 rejection regardless
+  of domain-verification status. Verified end-to-end: real reset email
+  delivered in ~1 minute.
+- **PASSED, verified with a real second throwaway PR:** branch protection.
+  `.github/rulesets/require-ci-checks.json` was applied for real via GitHub's
+  UI (founder chose to drop the ruleset's default 1-approving-review
+  requirement — GitHub disallows self-approval and this is currently a
+  solo-merge team relying on the automated Review Gate instead of a second
+  human reviewer). Confirmed with a second deliberately-broken throwaway PR:
+  the failing check showed tagged "Required" and the "Merge pull request"
+  button was genuinely disabled, not just red.
+- **Also passed directly:** CI-blocks-a-failing-PR (a real throwaway PR),
+  migration reversibility (the real automated script), and the T+2min
+  scheduled-job proof (`cron-jobs.md`'s runbook, executed live a third
+  time).
+- **In progress / paused:** INF-3 (Cloudflare deploy) — domain purchased
+  (`spontrip.app`, on Cloudflare) and `wrangler.jsonc` added since
+  Cloudflare has deprecated the classic Pages onboarding UI in favor of
+  Workers with static assets (verified against current Cloudflare docs,
+  not assumed) — deploy itself pending this PR merging, since `main` has
+  no app code yet. INF-5/INF-7 (Sentry PII dashboard check, physical push)
+  paused on Apple Developer Program enrollment (founder doesn't have one
+  yet — Expo Go can't run this project's SDK 57, a proper EAS development
+  client is needed and that requires iOS code signing).
+
+Full narrative and evidence for each item is in `.spark/progress.md`'s
+2026-08-28/29 checkpoint entries.
+
 ### Migration notes
 
 Three migrations apply cleanly on a fresh database; each has a tested, paired
@@ -173,55 +225,23 @@ rollback in `supabase/migrations_down/`. No destructive changes to any existing
 schema (greenfield). Migration-reversibility verified end-to-end (up → dump →
 down → dump → re-up → dump, schema diffs match exactly).
 
-### Manual steps still owed to a human (Review Gate finding 7, QA follow-up)
+### Branch protection — DONE, not just documented
 
-`.github/workflows/ci.yml` itself is correctly wired — no `continue-on-error`,
-no `|| true`, no `if: always()` anywhere, independently confirmed by the Review
-Gate. **But a red GitHub Actions run does not, by itself, block a merge.** Only
-a branch protection ruleset requiring these specific checks does, and nothing
-in this repo can configure that automatically — it's a GitHub repo-settings
-action only a human with admin access can take.
+~~Manual steps still owed to a human~~ — **this is now complete**, applied for
+real via GitHub's UI and verified with a real second throwaway PR (see GATE 3
+section above), not just configured. `.github/rulesets/require-ci-checks.json`
+reflects what's actually live (11 required status checks, no
+1-approving-review rule — founder decision, see that file's own comment).
 
-**Required action:** in GitHub repo Settings → Rules → Rulesets → New branch
-ruleset (targeting `main`), require these exact status checks (their literal
-`name:` string from `ci.yml` — GitHub matches on this, not the job id):
-
-- `Lint (Node 20 — apps/mobile, ci/scripts, and everything not apps/web)`
-- `Typecheck (Node 20 — apps/mobile, ci/scripts)`
-- `Test - ci/scripts (unit)`
-- `Test - apps/mobile (Jest, jest-expo)`
-- `apps/web (Node 22 — lint, typecheck, build, test, its slice of npm audit)`
-- `SEC-3 - check-bundle-keys (real expo export)`
-- `check-migration-pairs`
-- `SEC-1 - check-rls-enabled (static)`
-- `Supabase integration (migrations, SEC-2, SEC-4, Edge Functions)`
-- `INF-9 - r2-denied-read-test (real R2, secrets-gated)`
-- `npm audit (--audit-level=high, Node 20, whole tree)`
-
-**Deliberately NOT in that list:** `INF-6 - PostHog repeat-join funnel (merge
-to main only)` — it only runs on `push` to `main` (`if:` condition in
-`ci.yml`), so it never reports a status on a pull_request event at all;
-requiring it would make every PR wait forever for a check that structurally
-cannot fire against it.
-
-A starting-point ruleset JSON matching GitHub's Rulesets API shape is
-committed at `.github/rulesets/require-ci-checks.json` — **not auto-applied**
-(GitHub doesn't read files from this path the way it reads
-`.github/workflows/*.yml` or `dependabot.yml`). Apply it via
-`gh api repos/:owner/:repo/rulesets --input <file>` (after stripping the
-`"//"` comment key GitHub's API will reject) or recreate it by hand in the
-Settings UI — either way, a human enabling it in repo settings is the actual
-required action; the file only exists so the exact check list isn't
-retyped/lost.
-
-**Also still needs a human, unrelated to branch protection:** repository
-secrets for the jobs that are currently honest-skipping without them —
-`R2_ACCOUNT_ID`/`R2_ACCESS_KEY_ID`/`R2_SECRET_ACCESS_KEY` and
-`DEV_SUPABASE_URL`/`DEV_SUPABASE_ANON_KEY`/`DEV_SUPABASE_SERVICE_ROLE_KEY`
-(the `r2-denied-read-test` job) and
-`POSTHOG_HOST`/`POSTHOG_CI_TEST_CAPTURE_API_KEY`/`POSTHOG_CI_TEST_PERSONAL_API_KEY`/`POSTHOG_CI_TEST_PROJECT_ID`
-(the `posthog-funnel-merge-test` job) — see the manual test checklist for what
-each needs and why this agent couldn't provision them.
+**Repository secrets status:**
+- ✅ PostHog (`POSTHOG_HOST`, `POSTHOG_CI_TEST_CAPTURE_API_KEY`,
+  `POSTHOG_CI_TEST_PERSONAL_API_KEY`, `POSTHOG_CI_TEST_PROJECT_ID`) — added,
+  the `posthog-funnel-merge-test` job is now a real gate (not yet fire-tested
+  live, since it only runs on push to `main`, pending this PR).
+- ⬜ R2 (`R2_ACCOUNT_ID`/`R2_ACCESS_KEY_ID`/`R2_SECRET_ACCESS_KEY`,
+  `DEV_SUPABASE_URL`/`DEV_SUPABASE_ANON_KEY`/`DEV_SUPABASE_SERVICE_ROLE_KEY`)
+  — still needed for the `r2-denied-read-test` job; INF-9's manual test item
+  not yet attempted.
 
 ## Command for the human
 
