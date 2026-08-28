@@ -1016,3 +1016,25 @@ Findings that change or constrain the plan:
      resolved with independent, adversarial verification at every step,
      not just diff review. `.spark/milestones.md` M0 status set to
      `awaiting-acceptance`.
+
+---
+
+## 2026-08-29 — GATE 3 manual testing — decisions surfaced along the way
+
+140. **Founder decision: real cloud Supabase project (the first one, created
+     during GATE 3 Test #10) stays on the Free plan, not Pro.** Discovery:
+     INF-10's AC ("billing alert configured at $40") assumes a paid plan —
+     Supabase's Free tier has no dollar-based billing at all, only usage
+     quotas protected by a spend cap that keeps the project at genuinely
+     **$0 risk** of surprise charges (unresponsive/read-only on overage,
+     never billed) rather than an alert that fires after spending has
+     already happened. Upgrading to Pro (~$25/mo+) to satisfy the literal
+     $40-alert AC would consume half the project's entire $50/mo
+     total-vendor budget ceiling (decision 18) for a mechanism arguably
+     weaker than what Free already provides for free. **INF-10 is treated
+     as satisfied by this safer equivalent** (spend cap already enabled,
+     verified in dashboard) rather than failed. **Revisit the literal $40
+     alert if/when this project (or a separate stage/prod project) actually
+     upgrades to Pro** for real production use — `environment.md`'s
+     dev/stage/prod tiers may warrant paid plans at that point regardless
+     of this decision.

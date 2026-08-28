@@ -472,6 +472,17 @@ last_updated: 2026-08-28
   the restricted buckets regardless of caller). Credentials added as 6
   GitHub repository secrets so `INF-9 - r2-denied-read-test` becomes a
   real, permanent every-PR gate (previously honest-skipping).
+- 2026-08-29 — **Test #10 (billing alert) — treated as satisfied by a
+  safer equivalent, not the literal $40 alert.** Founder created the
+  project's first real cloud Supabase project. Discovered it's on the
+  Free plan (no payment method on file), which has no dollar-based
+  billing at all — protection comes from a spend cap (already enabled)
+  that keeps the project at genuine $0 risk rather than an after-the-fact
+  alert. Upgrading to Pro just to satisfy the literal AC would cost
+  ~$25/mo+, half the project's entire $50/mo total budget ceiling.
+  Founder decided to stay on Free tier for now (decision 140) — revisit
+  the real $40 alert if/when a paid plan is actually needed for
+  stage/prod. Not a failure, a correctly-adapted equivalent.
 - 2026-08-28 — **Tests #5 (Sentry) and #7 (push notification) PAUSED, not
   failed.** Real blocker found and worked through methodically: Jest can't
   prove real Sentry delivery (native SDK disabled in its mocked RN
