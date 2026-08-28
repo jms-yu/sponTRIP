@@ -18,7 +18,14 @@
     "posthog-funnel-merge-test is DELIBERATELY excluded: it only runs on",
     "push to main (if: github.event_name == 'push'), so it never reports",
     "on a pull_request event - requiring it would make every PR wait",
-    "forever for a check that structurally cannot run against it."
+    "forever for a check that structurally cannot run against it.",
+    "",
+    "No pull_request/human-approval rule is included on purpose (founder",
+    "decision during GATE 3 manual testing, 2026-08-28): this two-founder",
+    "team relies on the automated spark-review-gate audit before code",
+    "reaches a PR, and GitHub disallows self-approval, so a required",
+    "human-approval rule would block solo merges without adding a second",
+    "reviewer to the workflow. Revisit if a real second reviewer joins."
   ],
   "name": "Require CI checks on main",
   "target": "branch",
@@ -30,16 +37,6 @@
     }
   },
   "rules": [
-    {
-      "type": "pull_request",
-      "parameters": {
-        "required_approving_review_count": 1,
-        "dismiss_stale_reviews_on_push": true,
-        "require_code_owner_review": false,
-        "require_last_push_approval": false,
-        "required_review_thread_resolution": true
-      }
-    },
     {
       "type": "required_status_checks",
       "parameters": {
