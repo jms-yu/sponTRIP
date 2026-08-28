@@ -444,3 +444,19 @@ last_updated: 2026-08-28
   button in `App.tsx` reverted, dev server stopped, local `.env` DSN file
   removed — clean state to resume from once Apple Developer enrollment
   completes. Continuing with checklist items that don't depend on it.
+- 2026-08-28 — **Test #11 (branch protection) PASSED — verified with a
+  real second throwaway PR, not just by inspecting the settings.**
+  GitHub repo connected to a working ruleset requiring all 11 mechanical
+  CI checks (verified against `ci.yml`'s actual top-level job `name:`
+  fields, not step names — an earlier naive grep pass would have pulled
+  nested step names too). Founder chose to drop the ruleset's default
+  1-approving-review requirement (GitHub disallows self-approval; this is
+  currently a solo-merge team relying on the automated Review Gate
+  instead of a second human reviewer) — `.github/rulesets/require-ci-checks.json`
+  updated and committed to reflect that decision, with reasoning recorded
+  in the file's own comment. Second throwaway PR opened with the same
+  kind of deliberate test failure: this time the failing check showed
+  tagged **"Required"** and the **"Merge pull request" button was greyed
+  out/disabled** — the real, load-bearing proof branch protection blocks
+  merges, not just that checks turn red. Closed without merging, branches
+  cleaned up locally and on GitHub.
