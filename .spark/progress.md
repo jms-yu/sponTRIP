@@ -392,3 +392,16 @@ last_updated: 2026-08-28
   `pr-draft.md` (incorporating the GO verdict, the two remediation cycles,
   and the M1-follow-up observations) and the M0 manual testing checklist,
   then GATE 3 is presented to the human.
+- 2026-08-28 — **Phase 6 complete.** spark-scribe finalized `pr-draft.md`
+  and wrote `m0-manual-test-checklist.md`. Orchestrator fact-checked both
+  against the actual shipped code before presenting and found/fixed 4
+  substantive drift issues the scribe (working from state-file summaries,
+  not the code itself) introduced: wrong Sentry DSN env var name plus a
+  test approach that would have bypassed the client-side `beforeSend`
+  scrubber entirely; wrong PostHog env var names, a nonexistent npm
+  script, and a described 3-step funnel when the shipped funnel is 2
+  steps; wrong `send-test-push` header name/payload field and a missing
+  mention of the `ALLOW_TEST_PUSH` gate added in remediation; a
+  nonexistent R2 test npm script and missing required Supabase env vars.
+  All corrected against the real source before commit. **GATE 3
+  presented to the human.**
