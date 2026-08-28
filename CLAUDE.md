@@ -29,7 +29,13 @@ planning, developing, fixing, reporting — read `.spark/` state files first:
 
 ## Stack
 
-<Filled in after Gate 1 — e.g. "Next.js 14 + Supabase + Vercel" — so any session knows the tech context without re-deriving it.>
+React Native + Expo (client, EAS build/submit/OTA) / Supabase — Postgres +
+RLS + Auth + Realtime + Edge Functions (backend) / Cloudflare R2 (object
+storage) / Cloudflare Images / Cloudflare Pages via Workers static assets
+(web surface, spontrip.app) / PostHog (analytics) / Sentry (monitoring) /
+Resend (email) / Expo Push (push). Monorepo: `apps/mobile`, `apps/web`
+(Astro, static output), `supabase/`, `ci/scripts/`. Node 20 LTS repo-wide
+except `apps/web` on Node 22 (see `.spark/decisions.md` 130).
 ```
 
 ---

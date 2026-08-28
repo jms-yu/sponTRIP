@@ -1,8 +1,8 @@
 # Progress / Checkpoint
 
 current_command: /spark-dev
-current_phase: Milestone 0 (Scaffold & security baseline) — Phases 1-5 complete, Review Gate GO. Entering Phase 6 (close-out): scribe writes pr-draft.md + manual test checklist, then GATE 3 presented to the human.
-last_updated: 2026-08-28
+current_phase: Milestone 0 COMPLETE and marked DONE. Ready for /spark-document and the next milestone (M1 — App shell, IA, design system, accounts).
+last_updated: 2026-08-29
 
 ## Blockers
 
@@ -25,6 +25,16 @@ last_updated: 2026-08-28
   **M0** (Sign in with Apple, Expo Push on iOS, any EAS iOS build) — project.md
   §13 previously dated it "before iOS beta," corrected. Both store accounts
   should be started now, in parallel with development. Waiting on: user.
+  **2026-08-29 update:** still not started. Discussed during GATE 3 —
+  Individual enrollment (not Organization) is the faster path (~1-2 days
+  vs. a D-U-N-S-number wait for Organization) if the goal is just unblocking
+  iOS device testing (M0's Tests #5/#7, tracked done-with-follow-up in
+  `milestones.md`'s M0 section); Organization only matters if "Fonya
+  Technology" branding in the App Store matters for public launch, which is
+  a separate, later decision. No Mac exists on this team's setup, so there
+  is no iOS Simulator fallback — enrollment is the only path to any iOS
+  testing at all, ever, on the current hardware. Not blocking Android
+  development or most of M1.
 
 ## Checkpoint log
 
@@ -483,6 +493,20 @@ last_updated: 2026-08-28
   Founder decided to stay on Free tier for now (decision 140) — revisit
   the real $40 alert if/when a paid plan is actually needed for
   stage/prod. Not a failure, a correctly-adapted equivalent.
+- 2026-08-29 — **MILESTONE 0 MARKED DONE.** Final tally: 11 of 13 GATE 3
+  manual checklist items passed with real evidence (accounts created,
+  real infrastructure connected, several genuine bugs found and fixed
+  along the way — not just code review). #5 (Sentry device check) and #7
+  (push notification) carried forward as an explicit, tracked follow-up
+  pending Apple Developer Program enrollment (not yet started; founder
+  briefed on Individual-vs-Organization tradeoff, leaning Individual for
+  speed). #12 (SEC-1..4 CI-tested) and #13 (Apple/Google Play account
+  reminders) were confirmation-only, no action needed. `milestones.md`'s
+  M0 section updated with the full status and both carried-forward items,
+  so this isn't lost. Founder explicitly chose to close the milestone now
+  rather than hold it open on the two Apple-blocked items, since nothing
+  else in the plan depends on them. **Ready for `/spark-document` and
+  Milestone 1 (App shell, IA, design system, accounts).**
 - 2026-08-28 — **Tests #5 (Sentry) and #7 (push notification) PAUSED, not
   failed.** Real blocker found and worked through methodically: Jest can't
   prove real Sentry delivery (native SDK disabled in its mocked RN

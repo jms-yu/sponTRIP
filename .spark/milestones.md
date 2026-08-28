@@ -51,13 +51,34 @@ estimate from M0 onward — see the calendar-week-8 checkpoint below.
 
 ## M0 — Scaffold & security baseline · 2.0 FTE-wk
 
-**Status: merged, GATE 3 checklist still in progress** (2026-08-29) — built,
-QA'd, Review-Gate GO'd (2 remediation cycles of 3 allowed; see
-`decisions.md` 119–139), and the real PR (#3) merged to `main` on
-2026-08-29 after extensive real-world manual testing (see
-`.spark/progress.md`'s 2026-08-28/29 entries). **Not marked `done` yet** —
-several manual checklist items remain (#3 Cloudflare deploy in progress,
-#5/#7 paused on Apple Developer enrollment, #9/#10 not yet attempted).
+**Status: DONE** (2026-08-29) — built, QA'd, Review-Gate GO'd (2
+remediation cycles of 3 allowed; see `decisions.md` 119–139), merged to
+`main` via real PR #3, and put through extensive real-world GATE 3 manual
+testing (see `.spark/progress.md`'s 2026-08-28/29 entries). **11 of 13
+manual checklist items passed with real evidence** — not just built, but
+proven: a live deliberately-broken PR confirmed CI genuinely blocks merges;
+real accounts (PostHog, Resend, Cloudflare R2, a cloud Supabase project)
+were connected and verified end-to-end, surfacing and fixing several real
+bugs no code review would have caught (a PostHog Query API caching/engine
+issue, a missing DNS record for the deployed domain, Resend's actual
+verified-domain vs. DNS-hostname distinction). Founder decided to close M0
+now rather than hold it on the two remaining items.
+
+**Two items carried forward as an explicit open follow-up, not silently
+dropped:** #5 (Sentry PII redaction, verified on a real device) and #7
+(push notification delivery) — both need a real iOS build, which needs
+Apple Developer Program enrollment (not started; founder chose Individual
+enrollment as the faster path, ~1-2 days once begun). Nothing else in the
+plan is blocked by this — Android development and all non-iOS work can
+proceed normally. Re-test these two once enrollment completes.
+
+**Also carried forward:** INF-10's literal "$40 billing alert" — the real
+cloud Supabase project created during testing is deliberately staying on
+the Free plan (decision 140) rather than upgrading to Pro (~$25/mo, half
+the project's total budget ceiling) just to enable dollar-based billing
+alerts; Free's spend cap already provides genuinely $0-risk protection.
+Revisit if/when a paid Supabase plan is actually needed for stage/prod.
+
 Two MEDIUM follow-ups logged in `security.md` §7 to fix at M1 kickoff
 (`ownerWritable` INSERT semantics; Edge Function test-file CI wiring).
 
