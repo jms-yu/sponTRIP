@@ -456,6 +456,22 @@ last_updated: 2026-08-28
   a sandbox-local DNS quirk, and by the founder directly in an Incognito
   browser window — a non-incognito window briefly showed a false negative
   from stale local Chrome DNS caching, unrelated to the actual deployment).
+- 2026-08-29 — **Test #9 (R2 denied-read) PASSED.** Founder created a
+  Cloudflare R2 subscription (free tier, $0 due now, only billed past
+  10GB/1M-Class-A/10M-Class-B monthly free limits) and three buckets
+  (`general`, `receipts`, `verification`, Automatic/Asia-Pacific location
+  matching the PH user base, Standard storage class). Created a scoped
+  **Account API Token** (not a User token — chosen deliberately so the
+  credential represents the service, not a personal login, and keeps
+  working independent of account membership changes) restricted to
+  exactly those three buckets (least-privilege, same habit as the
+  PostHog key). Ran `ci/scripts/r2-denied-read-test.ts` for real against
+  live R2 + the local Supabase stack: `PASS — unauthenticated direct
+  reads denied, receipts/verification always 403` — both AC halves
+  confirmed (no public bucket access at all; `mint-storage-url` denies
+  the restricted buckets regardless of caller). Credentials added as 6
+  GitHub repository secrets so `INF-9 - r2-denied-read-test` becomes a
+  real, permanent every-PR gate (previously honest-skipping).
 - 2026-08-28 — **Tests #5 (Sentry) and #7 (push notification) PAUSED, not
   failed.** Real blocker found and worked through methodically: Jest can't
   prove real Sentry delivery (native SDK disabled in its mocked RN
