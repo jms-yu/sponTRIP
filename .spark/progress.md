@@ -421,3 +421,26 @@ last_updated: 2026-08-28
   (`status = 'failed'`, `error = 'deliberate smoke-test failure'`) fired
   and recorded correctly, both jobs unscheduled after, `cron.job` confirmed
   empty. Continuing through the remaining items next.
+- 2026-08-28 — **Tests #5 (Sentry) and #7 (push notification) PAUSED, not
+  failed.** Real blocker found and worked through methodically: Jest can't
+  prove real Sentry delivery (native SDK disabled in its mocked RN
+  environment — confirmed via debug logging, "flush() returned: true" but
+  no event ever reached Sentry); the real app requires a physical device.
+  Attempted via Expo Go (QR connection worked correctly — proves the dev
+  server and network path are fine) but hit a hard SDK-version wall:
+  this project targets Expo SDK 57, current Expo Go only supports up to
+  SDK 54 (confirmed by the founder's own device), and that mismatch has no
+  workaround short of a custom dev client. Founder opted to build a proper
+  EAS development client (the correct long-term path — needed for all
+  future device testing, not just this check) rather than downgrade SDK or
+  skip. Logged into EAS CLI as `jms_yu` after working around this sandbox's
+  inability to handle any interactive terminal prompt (login had to be run
+  in the founder's own VS Code terminal). **Blocked again immediately
+  after:** founder does not yet have an Apple Developer Program membership
+  (needed for iOS code signing, confirmed the phone in use is an iPhone),
+  which is money ($99/yr) and 1-2 days identity verification — already
+  flagged as a founder task in `milestones.md`'s M0 section, now
+  confirmed not yet done. **Both tests paused here**, temporary test
+  button in `App.tsx` reverted, dev server stopped, local `.env` DSN file
+  removed — clean state to resume from once Apple Developer enrollment
+  completes. Continuing with checklist items that don't depend on it.
