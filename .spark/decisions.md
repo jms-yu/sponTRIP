@@ -953,3 +953,66 @@ Findings that change or constrain the plan:
      routed straight back to `spark-developer` rather than waiting for
      Review Gate to catch it — findings 1, 3–11 confirmed solid and not
      re-litigated.
+135. **Finding 2 follow-up fixed.** `attemptInsert()` now mirrors
+     `attemptUpdate`/`attemptDelete`'s pattern: fires the mutation bare (no
+     `.select()` chained, its own response is never the verdict), tags the
+     payload with a per-identity probe value, verifies via an independent
+     service-role read. Developer reproduced QA's exact live-exploit steps
+     against the fix (planted permissive INSERT policy → suite now fails
+     loudly for both identities on both affected tables → reverted → clean)
+     before reporting done. 2 commits. Proceeding to final QA
+     re-verification, then Review Gate cycle 2 of 3.
+136. **QA closed finding 2 with its own independent live reproduction**
+     (not just re-reading the diff): replanted the identical permissive
+     INSERT policy, confirmed the suite now fails loudly for both
+     identities on both affected tables, separately confirmed the fix
+     detects the actual real-world attack shape (bare insert, no
+     `.select()` chained — the same vulnerability shape as the original
+     finding) rather than a coincidentally-different behavior, reverted,
+     confirmed clean. Full regression sweep: all counts unchanged from the
+     prior pass (16/16 mobile, 2/2 web, 29/29 ci/scripts, 19/19 Deno, npm
+     audit clean both Node versions). No scope creep — `git log` confirms
+     only the two described commits. **All 11 remediation-cycle-1 findings
+     now genuinely fixed and genuinely tested. Entering Review Gate cycle
+     2 of 3.**
+137. **Review Gate cycle 2 — GO.** Both HIGH findings independently
+     re-verified as genuinely resolved: finding 1 (path traversal) survived
+     17 exploit variants including 6 new encoding cases with zero escapes;
+     finding 2 (write-denial) was mutation-tested — 8 real permission
+     grants planted directly into the live schema, 6/8 caught by the
+     suite, the 2 misses proven to be equivalent mutants (Postgres denies
+     UPDATE/DELETE with no SELECT policy regardless, so nothing was
+     actually being granted). INF-4's cron runbook was executed end-to-end
+     against real wall-clock firing. Findings 3–11 each independently
+     re-verified. Zero unresolved Critical/High findings; **zero scope
+     creep** (exactly 4 new files, each traceable to a specific finding).
+     Full evidence in `progress.md`'s Phase 5 checkpoint.
+138. **Four new non-blocking observations from cycle 2, not routed back
+     for a 3rd remediation cycle per the Review Gate's own recommendation
+     — logged as M1-kickoff follow-ups instead:**
+     [MEDIUM] the negative-auth matrix's `ownerWritable` INSERT check
+     conflates "owns the seeded row" with "owns the row being inserted,"
+     which will false-fail on correct M1 owner-scoped policies (proven
+     with a textbook M1-shaped policy set) — predictable fix is an M1
+     developer flipping `ownerWritable` back to `false` under CI pressure,
+     silently disabling the assertion decision 126 requires; also, no
+     identity currently attempts inserting a row forging another user's
+     ownership, the actually-important INSERT negative case, moot at M0's
+     zero-policy tables but real from M1.
+     [MEDIUM] new Edge Function test files must be hand-enumerated as
+     individual steps in `ci.yml`, so `timingSafeEqual.test.ts` (7 tests)
+     currently runs locally but never in the blocking pipeline — same
+     "silently doesn't run" class as cycle-1 finding 3, one layer up; fix
+     is switching to a directory-level `deno test tests/`.
+     Both logged in `security.md` §7. Two LOW observations (SEC-3 misses a
+     key pasted into a comment — satisfies the literal bundle-only AC;
+     `redactDeep` flattens non-plain values in Sentry contexts, to check
+     during the already-owed manual dashboard verification) logged and
+     carried, no fix required now.
+139. **Milestone 0 build complete. GO. Entering Phase 6 (close-out).**
+     29 commits on `milestone/00-scaffold-security-baseline`. Two
+     remediation cycles (of the allowed 3) consumed on Review Gate findings
+     plus one QA-caught follow-up within cycle 1's remediation — both
+     resolved with independent, adversarial verification at every step,
+     not just diff review. `.spark/milestones.md` M0 status set to
+     `awaiting-acceptance`.

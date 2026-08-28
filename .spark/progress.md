@@ -1,7 +1,7 @@
 # Progress / Checkpoint
 
 current_command: /spark-dev
-current_phase: Milestone 0 (Scaffold & security baseline) — Phase 1 complete (spec + environment recipe written). M0 has no UI component, so Phase 2 (design spec) is skipped. Entering Phase 3 (build via spark-developer).
+current_phase: Milestone 0 (Scaffold & security baseline) — Phases 1-5 complete, Review Gate GO. Entering Phase 6 (close-out): scribe writes pr-draft.md + manual test checklist, then GATE 3 presented to the human.
 last_updated: 2026-08-28
 
 ## Blockers
@@ -362,3 +362,33 @@ last_updated: 2026-08-28
   19/19 Deno tests, root lint/typecheck clean. One commit
   (`ddf9fee`). **Entering QA re-verification, then Review Gate cycle 2 of
   3.**
+- 2026-08-28 — **Final QA pass confirmed finding 2 closed** with QA's own
+  independent live reproduction (replanted the permissive INSERT policy,
+  confirmed loud failure, confirmed the fix detects the real attack shape
+  not a coincidental one, reverted clean) — not taken on the developer's
+  word. Full regression sweep: 16/16 mobile, 2/2 web, 29/29 ci/scripts,
+  19/19 Deno, npm audit clean both Node versions, no drift from prior
+  counts. **All 11 remediation-cycle-1 findings now genuinely fixed and
+  tested. Entering Review Gate cycle 2 of 3.**
+- 2026-08-28 — **Phase 5 (Review Gate) cycle 2 — GO.** Both HIGH findings
+  independently re-verified as closed, not re-read: finding 1 survived 17
+  exploit variants (6 new encoding cases beyond the original 3) with zero
+  escapes; finding 2 was mutation-tested — 8 real permission grants
+  planted live, 6/8 caught, the 2 misses proven to be equivalent mutants
+  (Postgres denies UPDATE/DELETE with no SELECT policy regardless, so
+  nothing was actually granted). INF-4's `cron-jobs.md` runbook was
+  executed end-to-end against real wall-clock pg_cron firing (both -ok and
+  -fail paths, `job_runs` rows confirmed). Findings 3–11 each
+  independently re-verified. Zero unresolved Critical/High findings, zero
+  scope creep (4 new files, each traceable to a specific finding), every
+  QA-reported count reproduced exactly. Four new non-blocking
+  observations (2 MEDIUM, 2 LOW) — logged in `security.md` §7 as
+  M1-kickoff follow-ups per the Review Gate's own recommendation, not
+  routed to a 3rd remediation cycle. **VERDICT: GO.**
+- 2026-08-28 — **Milestone 0 — Phase 5 complete, GO. `milestones.md` M0
+  status set to `awaiting-acceptance`.** 29 commits on
+  `milestone/00-scaffold-security-baseline`, 2 of the allowed 3
+  remediation cycles used. Entering Phase 6: spark-scribe writes the final
+  `pr-draft.md` (incorporating the GO verdict, the two remediation cycles,
+  and the M1-follow-up observations) and the M0 manual testing checklist,
+  then GATE 3 is presented to the human.

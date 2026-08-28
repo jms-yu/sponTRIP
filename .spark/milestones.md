@@ -51,6 +51,12 @@ estimate from M0 onward — see the calendar-week-8 checkpoint below.
 
 ## M0 — Scaffold & security baseline · 2.0 FTE-wk
 
+**Status: awaiting-acceptance** (2026-08-28) — built, QA'd, and Review-Gate
+GO'd (2 remediation cycles of 3 allowed; see `decisions.md` 119–139). Not
+`done` until the founder confirms the PR merge, per spark-commit protocol.
+Two MEDIUM follow-ups logged in `security.md` §7 to fix at M1 kickoff
+(`ownerWritable` INSERT semantics; Edge Function test-file CI wiring).
+
 **Contents:** INF-1…10, SEC-1…4.
 
 **Acceptance criteria**

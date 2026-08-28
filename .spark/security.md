@@ -195,6 +195,68 @@ posture (R23) rather than papering over a real advisory to get a green build.
 **Founder action needed:** decide (a)/(b)/(c) above; until then, `npm-audit`
 failing on `apps/web`'s Astro dependency chain is expected, not a regression.
 
+**RESOLVED 2026-08-28 (decision 130):** founder chose (a) — `apps/web`
+bumped to Node 22 (own `.nvmrc`, own `engines` field), Astro upgraded to
+7.2.9, `ci.yml` split into a dedicated Node-22 job for `apps/web`.
+`npm audit --audit-level=high` verified clean under both Node 20 and 22.
+
+### 2026-08-28 — M0 Review Gate cycle 2 — two M1-kickoff follow-ups (not fixed in M0, deliberately not a 3rd remediation cycle)
+
+**Severity tag: MEDIUM (both).** Logged per the Review Gate's own
+recommendation: real, but narrow, and better fixed at the start of M1's
+work (where they'll first bite) than spent as a third M0 remediation cycle.
+
+1. **`ci/scripts/rls-negative-auth/matrix.ts`/`run.ts` — `ownerWritable`'s
+   INSERT check conflates two different meanings of "owner."** `isOwner`
+   means "owns the seeded row used for the UPDATE/DELETE probes";
+   `attemptInsert` sets the new row's owner column to the acting
+   identity's own uid. For UPDATE/DELETE these coincide; for INSERT they
+   don't, so `expectSuccess = ownerCanWrite && identity.isOwner` is wrong
+   for INSERT specifically. Proven with a textbook M1-shaped owner-scoped
+   policy set (`with check (owner_id = auth.uid())`): the suite fails
+   loudly on **correct** code (`FAIL — user B (non-owner) INSERT
+   unexpectedly SUCCEEDED`, when B legitimately inserted a row it itself
+   owns). Fails closed, so not a live vulnerability today — the real risk
+   is the fix-under-pressure failure mode: an M1 developer facing red CI
+   on correct code flips `ownerWritable` back to `false`, which per
+   decision 126 silently disables the owner-write assertion for that table
+   going forward, the exact "waive the criterion" precedent
+   `milestones.md` M1 was rewritten to avoid repeating. **Also:** no
+   identity currently attempts inserting a row that forges another user's
+   ownership (`owner_id = A.id` submitted by B) — the actually load-bearing
+   INSERT negative case. Moot at M0 (zero-policy tables), real from M1's
+   first owner-scoped table.
+   **Fix, before M1's first table is added to the matrix:** for INSERT use
+   `expectSuccess = ownerCanWrite && identity.uid !== null` (any
+   authenticated identity may create a row it owns); keep `isOwner`
+   semantics for UPDATE/DELETE against the seeded row; add an
+   ownership-forgery INSERT case that must always be denied regardless of
+   `ownerWritable`.
+2. **New Edge Function test files aren't wired into CI unless
+   hand-enumerated.** `.github/workflows/ci.yml` lists Deno test files
+   individually (`scheduled_smoke.integration.test.ts`,
+   `mint_storage_url.test.ts`, `send_test_push.test.ts`) — the new
+   `timingSafeEqual.test.ts` (7 tests, added in remediation cycle 1) passes
+   locally but was never added to this list, so it never runs in the
+   merge-blocking pipeline. Same failure class as cycle-1 finding 3
+   (a check that silently doesn't run reads identically to one that
+   passes), one layer up the stack — a future M1+ Edge Function test file
+   will have the identical fate unless this is fixed structurally.
+   **Fix:** replace the per-file `deno test` steps with a single
+   directory-level `deno test --allow-net --allow-env tests/` so new test
+   files are picked up automatically.
+
+Two LOW observations from the same review, logged and carried without a
+required fix: `check-bundle-keys.ts`'s comment-stripping (needed to avoid
+the identifier-check self-matching its own regex source) also hides a key
+value pasted into a `//` comment from the source-scan half — satisfies the
+literal AC ("fails if a key appears in the client bundle," and comments
+don't ship) but is worth tightening if convenient. `sentry.ts`'s
+`redactDeep` flattens non-plain values (`Date`, `Error`, `Map`) it
+encounters inside `contexts`/SDK metadata to `{}` — harmless for the
+JSON-serializable `beforeSend` payload, worth a glance during the
+already-owed real-dashboard manual check.
+
 ---
 
 #### RESOLVED — 2026-08-28, same day, decision 130
