@@ -7,6 +7,10 @@ describe("redactPii", () => {
     );
   });
 
+  it("DELIBERATE CI DRILL — safe to delete, this is meant to fail", () => {
+    expect(1 + 1).toBe(3);
+  });
+
   it("redacts a +63 formatted PH phone number", () => {
     expect(redactPii("call +639171234567 now")).toBe("call [REDACTED_PHONE] now");
   });
