@@ -432,6 +432,30 @@ last_updated: 2026-08-28
   `done` yet, since several manual checklist items remain (#3 in progress,
   #5/#7 paused, #9/#10 not attempted). Continuing GATE 3 with a working
   `main` now available for real deployments.
+- 2026-08-29 — **Test #3 (Cloudflare deploy) PASSED**, with two real
+  environment discoveries along the way, both verified against actual
+  Cloudflare docs rather than assumed: (1) Cloudflare has fully retired
+  the classic "Pages" onboarding UI in favor of Workers with static
+  assets — `wrangler.jsonc` added to the repo root (`name: spontrip`,
+  `assets.directory: ./apps/web/dist`), deployed via Cloudflare's
+  Git-connected Workers Builds (build command `npm install && npm run
+  build -w apps/web`, root directory `/` to preserve npm-workspace
+  hoisting, `NODE_VERSION=22` build variable). First real build succeeded
+  end to end (install/build/deploy all green); confirmed via direct curl
+  the deployed content matches exactly, including a real build timestamp.
+  (2) The zone had no DNS record at all for the bare `spontrip.app` root
+  (only Resend's `send.` subdomain records existed) — Workers Routes
+  intercept traffic at Cloudflare's edge but still need *something* for
+  DNS to resolve to first. Fixed with the standard placeholder pattern: a
+  proxied `A` record for `@` pointing to `192.0.2.1` (a reserved,
+  never-actually-contacted address), plus a Workers Route
+  `spontrip.app/*` -> the `spontrip` Worker (corrected from Cloudflare's
+  auto-suggested `*.spontrip.app/*`, which only matches subdomains, not
+  the bare root). Verified end-to-end: `https://spontrip.app` returns a
+  real 200 with valid TLS and correct content (confirmed via curl bypassing
+  a sandbox-local DNS quirk, and by the founder directly in an Incognito
+  browser window — a non-incognito window briefly showed a false negative
+  from stale local Chrome DNS caching, unrelated to the actual deployment).
 - 2026-08-28 — **Tests #5 (Sentry) and #7 (push notification) PAUSED, not
   failed.** Real blocker found and worked through methodically: Jest can't
   prove real Sentry delivery (native SDK disabled in its mocked RN
