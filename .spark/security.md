@@ -322,3 +322,41 @@ not smooth per-event delay). All three fixed together in
 comment for full detail and the exact measurements taken). Verified with a
 real, live end-to-end run: PASS. **Resolved**, not merely logged — no
 further action needed.
+
+### 2026-08-29 — GATE 3 manual testing — INF-9's CI secrets were pointed at the wrong Supabase project
+
+**Severity tag: LOW** (not a security defect — the mechanical check itself
+was correctly written; the deployed configuration around it was wrong, so
+the CI job failed loudly rather than passing incorrectly).
+
+While closing out Milestone 0's manual test checklist, the founder created
+a real cloud Supabase project (Test #10). The `DEV_SUPABASE_URL`/
+`DEV_SUPABASE_ANON_KEY`/`DEV_SUPABASE_SERVICE_ROLE_KEY` GitHub repository
+secrets for the `INF-9 - r2-denied-read-test` CI job had been set (during
+Test #9) to the **local Docker stack's** address
+(`http://127.0.0.1:54421`) on the orchestrator's mistaken assumption that
+this job spins up its own local Supabase stack in CI, the way the
+"Supabase integration" job does. It does not — reading the job definition
+in `.github/workflows/ci.yml` directly shows it was always designed to
+need a real, reachable cloud Supabase project (the job's own comment says
+so), since a GitHub-hosted runner cannot reach `127.0.0.1` on a
+contributor's machine. First real PR run against this job failed with
+`ECONNREFUSED 127.0.0.1:54421`, exactly as expected once traced.
+
+**Fix:** the `mint-storage-url` Edge Function this test calls (a static
+JWT-and-signing function with no database dependency, confirmed by
+reading its source before deploying) was deployed for real to the new
+cloud project via `supabase functions deploy`, with its own R2 credentials
+set as Supabase project secrets via `supabase secrets set` (separate from,
+but same values as, the GitHub Actions secrets). The 3 GitHub secrets were
+then corrected to the real cloud project's URL and keys. Verified locally
+against the live cloud project before touching CI (`r2-denied-read-test.ts`
+run directly: PASS), then confirmed for real via the corrected PR's CI run
+going green.
+
+Logged so the mistake and its correction are both on record — the
+orchestrator asserted this was "verified" during Test #9 based on an
+unverified assumption about the CI job's setup rather than reading the
+job definition first, which is exactly the kind of claim this project's
+`security.md` §0 exists to catch even when the mistake is the
+orchestrator's own, not a developer agent's.
