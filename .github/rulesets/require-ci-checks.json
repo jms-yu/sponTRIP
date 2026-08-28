@@ -1,0 +1,63 @@
+{
+  "//": [
+    "STARTING POINT, NOT AUTO-APPLIED. GitHub does not read this file",
+    "automatically the way it reads .github/workflows/*.yml or",
+    "dependabot.yml - a human must actually apply this via the API or the",
+    "repo Settings UI (Settings -> Rules -> Rulesets -> New branch ruleset,",
+    "or `gh api repos/:owner/:repo/rulesets --input this-file` after",
+    "removing this comment key, since GitHub's API is strict about unknown",
+    "fields). This is Review Gate finding 7 (remediation cycle 1): a red",
+    "GitHub Actions run does NOT by itself block a merge - only a",
+    "ruleset/branch-protection rule requiring these exact checks does.",
+    "See .spark/pr-draft.md's manual-steps checklist for the human action",
+    "this file exists to support.",
+    "",
+    "The required_status_checks contexts below are the exact `name:`",
+    "strings from .github/workflows/ci.yml as of the M0 remediation-cycle-1",
+    "commit that added this file - keep them in sync if job names change.",
+    "posthog-funnel-merge-test is DELIBERATELY excluded: it only runs on",
+    "push to main (if: github.event_name == 'push'), so it never reports",
+    "on a pull_request event - requiring it would make every PR wait",
+    "forever for a check that structurally cannot run against it.",
+    "",
+    "No pull_request/human-approval rule is included on purpose (founder",
+    "decision during GATE 3 manual testing, 2026-08-28): this two-founder",
+    "team relies on the automated spark-review-gate audit before code",
+    "reaches a PR, and GitHub disallows self-approval, so a required",
+    "human-approval rule would block solo merges without adding a second",
+    "reviewer to the workflow. Revisit if a real second reviewer joins."
+  ],
+  "name": "Require CI checks on main",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "include": ["refs/heads/main"],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": true,
+        "required_status_checks": [
+          { "context": "Lint (Node 20 — apps/mobile, ci/scripts, and everything not apps/web)" },
+          { "context": "Typecheck (Node 20 — apps/mobile, ci/scripts)" },
+          { "context": "Test - ci/scripts (unit)" },
+          { "context": "Test - apps/mobile (Jest, jest-expo)" },
+          { "context": "apps/web (Node 22 — lint, typecheck, build, test, its slice of npm audit)" },
+          { "context": "SEC-3 - check-bundle-keys (real expo export)" },
+          { "context": "check-migration-pairs" },
+          { "context": "SEC-1 - check-rls-enabled (static)" },
+          { "context": "Supabase integration (migrations, SEC-2, SEC-4, Edge Functions)" },
+          { "context": "INF-9 - r2-denied-read-test (real R2, secrets-gated)" },
+          { "context": "npm audit (--audit-level=high, Node 20, whole tree)" }
+        ]
+      }
+    },
+    {
+      "type": "non_fast_forward"
+    }
+  ]
+}

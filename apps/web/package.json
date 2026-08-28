@@ -1,0 +1,36 @@
+{
+  "name": "@sponTRIP/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "//": [
+    "DELIBERATE Node-version split from the rest of this monorepo — see",
+    "apps/web/.nvmrc and decision 130 in .spark/decisions.md. astro@7.x is",
+    "the version that clears the HIGH/CRITICAL npm-audit advisories on the",
+    "astro@5.x line (fixed only in 7.x; there is no 6.x); astro@7 requires",
+    "Node >=22.12.0. apps/mobile and ci/scripts stay on Node 20 LTS (repo",
+    "root .nvmrc). Run `nvm use 22` (or equivalent) before working in this",
+    "workspace specifically. The `engines` field below makes npm warn",
+    "loudly if this workspace is ever installed under Node 20."
+  ],
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "start": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro",
+    "typecheck": "astro check",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "astro": "^7.2.9"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.4",
+    "typescript": "^5.6.3",
+    "vitest": "^4.1.11"
+  }
+}

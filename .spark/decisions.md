@@ -759,3 +759,260 @@ Findings that change or constrain the plan:
      breakdown, out-of-scope list, founder responsibilities/costs — pricing
      still to be verified before any client-facing use — and decisions
      112–116) to proceed to `/spark-dev`, Milestone 0.
+
+---
+
+## 2026-08-28 — `/spark-dev` Milestone 0 — technical spec (spark-architect)
+
+119. **Repo layout locked: npm-workspaces monorepo**, TypeScript everywhere —
+     `apps/mobile` (Expo/RN, Jest via jest-expo), `apps/web` (Astro static
+     output → Cloudflare Pages, Vitest), `supabase/` (migrations + a
+     project-level `migrations_down/` convention Supabase's CLI doesn't
+     natively provide, seed, Deno Edge Functions under `supabase/functions`,
+     tested with `deno test`), `ci/scripts` (Node/TS via tsx, Vitest). No
+     Turborepo/pnpm — one less tool for a two-founder AI-assisted team to
+     debug. Full tree in the M0 technical spec (superseded nowhere; this
+     entry is the durable record).
+120. **Migration rollback convention, binding from M0 onward, not just this
+     milestone:** every `supabase/migrations/<ts>_<name>.sql` ships a paired
+     `supabase/migrations_down/<ts>_<name>.down.sql` that exactly reverses
+     it. `migrations_down/` is never read by `supabase migration up` — it's
+     read only by this project's own CI tooling
+     (`check-migration-pairs.ts` blocks a PR missing a pair;
+     `migration-reversibility-test.ts` actually executes the newest down
+     file against a freshly-migrated local Postgres, diffs the schema, then
+     re-applies the up file to prove idempotent re-appliability). This is
+     the mechanical answer to "databases don't roll back via git."
+121. **M0's three migrations decided:** (1) `enable_extensions` —
+     `pgcrypto`, trivially reversible; (2) `smoke_test_fixtures` — a
+     permanent (not torn down after M0) canary table/view: RLS enabled with
+     deliberately zero policies (proves SEC-1's deny-by-default is
+     Postgres's actual behavior, not an assumption) plus a
+     `security_invoker`-flagged view over it (proves SEC-4's flag actually
+     delegates RLS rather than just being set). Re-run by the SEC-2
+     negative-auth suite on every future PR as a regression canary, not a
+     one-time M0 artifact; (3) `scheduled_jobs` — `pg_cron` + `pg_net` +
+     a service-role-only `job_runs` ledger table backing INF-4, doubling as
+     the SEC-2 matrix's "admin-only table" pattern until M7's real
+     `is_admin` claim exists. Rollback note logged directly in the down
+     migration's own comment: dropping `pg_cron` there is safe only until
+     M8's RECUR-2 schedules real production recurrence jobs on it — a
+     future rollback of that migration needs its own review at that point,
+     flagged now so it isn't rediscovered the hard way later.
+122. **Four Edge Functions decided for M0, all Deno, all narrowly scoped —
+     no product endpoints invented:** `scheduled-smoke-ok` /
+     `scheduled-smoke-fail` (INF-4 proof pair, shared-secret auth, not user
+     JWT — cron-invoked only), `mint-storage-url` (INF-9's R2 gatekeeper —
+     the one imperative, non-RLS access-control code path
+     `security.md` §5 already accepts as a known/accepted design; M0's
+     exact rule: `general` bucket → any authenticated caller may mint a URL
+     scoped to their own `general/{uid}/...` prefix; `receipts` and
+     `verification` → unconditional 403 for everyone until a later
+     milestone adds real ownership/admin logic — no direct/public bucket
+     read is ever permitted), `send-test-push` (INF-7's physical-device
+     harness, shared-secret auth, a build-time diagnostic tool, not a
+     product endpoint, deleted or left dormant after later milestones add
+     real push triggers).
+123. **Canonical PostHog analytics event schema locked now** (INF-6), in
+     `apps/mobile/src/lib/analytics/events.ts`, as the single legal event
+     vocabulary every later milestone must use:
+     `user_signed_up` / `event_confirmed` / `event_confirmed_repeat` /
+     `event_no_show` / `event_cancelled_exempt` / `event_cancelled_non_exempt`.
+     The repeat-join funnel (the project's core success metric — decisions
+     23, 53, 116) is defined as the two PostHog-native events
+     `event_confirmed` → `event_confirmed_repeat`, deliberately avoiding
+     PostHog's less-robust property-based step deduping. The no-show/
+     cancellation events are locked now because plan.md §3.10 names them as
+     "instrument from Milestone 0" watch-list tells for K1 and R19, even
+     though no milestone before M2/M3/M6 has code that fires them yet. **M0
+     does not wire any real emission call site** — it proves the pipeline
+     via a fixture seeder pushing synthetic events through PostHog's HTTP
+     Capture API into a dedicated `ci-test`-tagged environment, checked
+     against a saved Insights funnel — because this schema can't be
+     backfilled if wrong and there's no real feature yet to test it against
+     honestly.
+124. **INF-4's real T+2min pg_cron proof is explicitly NOT a permanent CI
+     gate — logged so it isn't mistaken for one later.** pg_cron has no
+     one-shot scheduling primitive, so faithfully proving real wall-clock
+     firing can't be done in a fresh CI container without a genuine
+     multi-minute wait every PR. Resolution: the function's own
+     success/failure-recording logic (job_runs row correctness for both
+     the -ok and -fail paths) is covered by an automated integration test
+     that invokes the Edge Functions directly, every PR; the actual
+     pg_cron→T+2min wall-clock firing is a one-time manual proof against
+     the dev cloud Supabase project, done once during M0 build and logged
+     as evidence, not re-run automatically.
+125. **Environment recipe selected for Milestone 0/R — no single
+     spark-environment-protocol recipe matches this stack exactly.**
+     Adapted composite, not a forced fit: `mobile-expo`'s client-tier
+     progression taken as-is; the Supabase-specific dev/stage/prod project
+     separation pattern named under `web-vercel-supabase` adopted on its
+     own merits for the backend slice (Vercel itself doesn't apply here —
+     Cloudflare Pages does); the web surface's dev/stage/prod handling
+     applied straight from the protocol's generic principles, since no
+     named recipe covers a static-site/Pages target. Full recipe written to
+     `.spark/environment.md`. Flagged there as a candidate for a future
+     named `mobile-expo-supabase-cloudflare` recipe if this exact composite
+     recurs on another SPARK project. Key decisions inside it worth
+     surfacing here: one PostHog project and one Sentry project total
+     (environment-tagged, not three separate free-tier accounts, to avoid
+     fragmenting INF-6's funnel fixture data); R2 uses environment-prefixed
+     paths within the same three buckets rather than nine buckets (access
+     control lives in `mint-storage-url`, not bucket ACLs, so fewer buckets
+     costs nothing security-wise); OTA (`eas update`) vs. full native build
+     promotion rule decided now, before any code exists, specifically so it
+     isn't improvised ad hoc under deadline pressure later; Supabase Pro
+     Branching (per-PR ephemeral DB) noted as available but explicitly not
+     required at M0, to protect the $40 billing-alert headroom.
+126. **Full negative-authorization matrix mechanism decided (SEC-2), binding
+     for every milestone from here on, not just M0:**
+     `ci/scripts/rls-negative-auth/matrix.ts` is a data-driven array — one
+     row per table/view (`target`, `ownerColumn | null`, `publicRead`,
+     `adminOnly`). The runner seeds two throwaway users via the
+     service-role client, signs in as each for real access tokens, builds
+     anon/user-A/user-B Supabase JS clients, and asserts anon gets zero
+     rows unless `publicRead`, user B gets zero rows/no effect against user
+     A's rows, and `adminOnly` targets reject both. **Every milestone from
+     M1 onward is required to add its new tables to this same matrix
+     file** — this is the concrete mechanical structure that makes SEC-5's
+     downgrade to optional (decision 112) safe rather than a quiet
+     weakening.
+127. Full spec — repo tree, all three migrations' up/down SQL, all four Edge
+     Function contracts, the CI mechanical-check exit-code contracts, and
+     the AC-by-AC test-strategy table — held by the orchestrator and handed
+     directly to `spark-developer` for Phase 3 build; not fully duplicated
+     here to avoid drift between two copies. This entry is the durable
+     summary; the spec itself is ephemeral orchestration state.
+
+---
+
+## 2026-08-28 — `/spark-dev` Milestone 0 — build complete, one founder decision surfaced pre-QA
+
+128. **M0 built and verified against a real local Supabase Docker stack**
+     (not just written): 3 migrations with tested rollbacks, 4 Deno Edge
+     Functions (11/11 tests), 8 CI mechanical-check scripts (SEC-1…4, INF-2,
+     INF-9, INF-6), Expo mobile scaffold (12/12 Jest tests incl. Sentry PII
+     scrubber), Astro web scaffold, full GitHub Actions pipeline +
+     Dependabot. Real pg_cron T+2min firing proven against the local stack
+     (substituted for the spec's "dev cloud project" step — no cloud
+     Supabase project exists yet). 11 commits on
+     `milestone/00-scaffold-security-baseline`. Full report in
+     `progress.md`'s Phase 3 checkpoint entry.
+129. **Astro/Node version conflict found and surfaced, not silently
+     resolved:** `astro@5.18.2` (used for `apps/web`) has real HIGH/CRITICAL
+     npm-audit advisories fixed only in `astro@7.2.9`, which requires
+     Node ≥22; M0's spec pinned Node 20 LTS repo-wide. The Developer left
+     CI's `npm audit --audit-level=high` gate unweakened rather than
+     suppressing it — meaning CI is genuinely red on this branch pending a
+     human call. Full exploitability analysis (why MEDIUM-in-practice today,
+     given `apps/web` is a single static route using none of the affected
+     directives) logged in `security.md` §7.
+130. **Founder decision: bump `apps/web` to Node 22**, keeping
+     `apps/mobile` and `ci/scripts` on Node 20 LTS (mixed Node versions
+     across workspaces, accepted as minor added CI/tooling complexity in
+     exchange for clearing the vulnerable Astro major cleanly, rather than
+     accepting the documented risk or weakening the audit gate). Routed
+     back to `spark-developer` to implement (Astro upgrade to 7.2.9, `.nvmrc`
+     handling for the web workspace, CI workflow Node-version-per-job
+     update) before QA runs, so QA doesn't burn a cycle on a
+     human-decision item rather than a code bug.
+131. **QA (Phase 4) passed cleanly** — every runnable check green, exact
+     counts as expected, credential-gated items honestly self-skipped.
+     Full report in `progress.md`.
+132. **Review Gate (Phase 5) — NO-GO, remediation cycle 1 of 3.** QA
+     evidence integrity confirmed accurate on independent re-run; no scope
+     drift. NO-GO from real code defects the QA suite doesn't cover — most
+     seriously a live-proven path-traversal bypass in `mint-storage-url`
+     (any authenticated user can mint read/write URLs into other users'
+     files and into the `receipts`/`verification` buckets meant to be
+     unconditionally denied at M0) and a negative-authorization suite that
+     only tests reads, never writes. Full 11-finding list in `progress.md`'s
+     Phase 5 checkpoint entry. Findings 1–8 routed to `spark-developer` for
+     remediation; 9–11 recommended fixed in the same pass since M1's schema
+     will trip 9/10 (migration-reversibility blind spots) otherwise.
+133. **Remediation cycle 1 complete — all 11 findings fixed** (required
+     1–8 and recommended 9–11), each verified against the real local
+     Supabase stack, not just typechecked. Finding 1's exact live
+     traversal reproduction was turned into regression tests; finding 2's
+     new write-denial checks were sanity-checked by temporarily adding
+     real permissive policies and confirming detection before reverting.
+     11 commits. Full writeup in `progress.md`'s checkpoint log. Proceeding
+     to QA re-verification, then Review Gate cycle 2 of 3.
+134. **QA re-verification: 10/11 findings solid, finding 2 partially
+     fixed with a real remaining gap, proven live.** UPDATE/DELETE
+     write-denial testing is correct (independent service-role re-read).
+     INSERT is not: `attemptInsert()` chains `.select("id").single()` onto
+     the mutating call, and Postgres RLS makes an `INSERT ... RETURNING`
+     fail with the *same* error when the SELECT half lacks a policy as
+     when the INSERT itself is genuinely denied — true for all 3 M0 matrix
+     rows (zero SELECT policies each). QA proved it: planted a permissive
+     INSERT policy on `smoke_test`, suite still reported PASS; a raw
+     client sending the identical payload without `.select()` got `201`
+     and the row persisted (service-role-confirmed), reverted cleanly.
+     Binding for every table added from M1 onward per decision 126, so
+     routed straight back to `spark-developer` rather than waiting for
+     Review Gate to catch it — findings 1, 3–11 confirmed solid and not
+     re-litigated.
+135. **Finding 2 follow-up fixed.** `attemptInsert()` now mirrors
+     `attemptUpdate`/`attemptDelete`'s pattern: fires the mutation bare (no
+     `.select()` chained, its own response is never the verdict), tags the
+     payload with a per-identity probe value, verifies via an independent
+     service-role read. Developer reproduced QA's exact live-exploit steps
+     against the fix (planted permissive INSERT policy → suite now fails
+     loudly for both identities on both affected tables → reverted → clean)
+     before reporting done. 2 commits. Proceeding to final QA
+     re-verification, then Review Gate cycle 2 of 3.
+136. **QA closed finding 2 with its own independent live reproduction**
+     (not just re-reading the diff): replanted the identical permissive
+     INSERT policy, confirmed the suite now fails loudly for both
+     identities on both affected tables, separately confirmed the fix
+     detects the actual real-world attack shape (bare insert, no
+     `.select()` chained — the same vulnerability shape as the original
+     finding) rather than a coincidentally-different behavior, reverted,
+     confirmed clean. Full regression sweep: all counts unchanged from the
+     prior pass (16/16 mobile, 2/2 web, 29/29 ci/scripts, 19/19 Deno, npm
+     audit clean both Node versions). No scope creep — `git log` confirms
+     only the two described commits. **All 11 remediation-cycle-1 findings
+     now genuinely fixed and genuinely tested. Entering Review Gate cycle
+     2 of 3.**
+137. **Review Gate cycle 2 — GO.** Both HIGH findings independently
+     re-verified as genuinely resolved: finding 1 (path traversal) survived
+     17 exploit variants including 6 new encoding cases with zero escapes;
+     finding 2 (write-denial) was mutation-tested — 8 real permission
+     grants planted directly into the live schema, 6/8 caught by the
+     suite, the 2 misses proven to be equivalent mutants (Postgres denies
+     UPDATE/DELETE with no SELECT policy regardless, so nothing was
+     actually being granted). INF-4's cron runbook was executed end-to-end
+     against real wall-clock firing. Findings 3–11 each independently
+     re-verified. Zero unresolved Critical/High findings; **zero scope
+     creep** (exactly 4 new files, each traceable to a specific finding).
+     Full evidence in `progress.md`'s Phase 5 checkpoint.
+138. **Four new non-blocking observations from cycle 2, not routed back
+     for a 3rd remediation cycle per the Review Gate's own recommendation
+     — logged as M1-kickoff follow-ups instead:**
+     [MEDIUM] the negative-auth matrix's `ownerWritable` INSERT check
+     conflates "owns the seeded row" with "owns the row being inserted,"
+     which will false-fail on correct M1 owner-scoped policies (proven
+     with a textbook M1-shaped policy set) — predictable fix is an M1
+     developer flipping `ownerWritable` back to `false` under CI pressure,
+     silently disabling the assertion decision 126 requires; also, no
+     identity currently attempts inserting a row forging another user's
+     ownership, the actually-important INSERT negative case, moot at M0's
+     zero-policy tables but real from M1.
+     [MEDIUM] new Edge Function test files must be hand-enumerated as
+     individual steps in `ci.yml`, so `timingSafeEqual.test.ts` (7 tests)
+     currently runs locally but never in the blocking pipeline — same
+     "silently doesn't run" class as cycle-1 finding 3, one layer up; fix
+     is switching to a directory-level `deno test tests/`.
+     Both logged in `security.md` §7. Two LOW observations (SEC-3 misses a
+     key pasted into a comment — satisfies the literal bundle-only AC;
+     `redactDeep` flattens non-plain values in Sentry contexts, to check
+     during the already-owed manual dashboard verification) logged and
+     carried, no fix required now.
+139. **Milestone 0 build complete. GO. Entering Phase 6 (close-out).**
+     29 commits on `milestone/00-scaffold-security-baseline`. Two
+     remediation cycles (of the allowed 3) consumed on Review Gate findings
+     plus one QA-caught follow-up within cycle 1's remediation — both
+     resolved with independent, adversarial verification at every step,
+     not just diff review. `.spark/milestones.md` M0 status set to
+     `awaiting-acceptance`.

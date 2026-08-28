@@ -1,0 +1,51 @@
+{
+  "name": "sponTRIP",
+  "private": true,
+  "version": "0.0.0",
+  "description": "SponTRIP monorepo — Expo mobile client, Astro web surface, Supabase backend, CI mechanical-check scripts.",
+  "workspaces": [
+    "apps/*",
+    "ci/scripts"
+  ],
+  "//engines": [
+    "Two Node majors are genuinely supported across this monorepo, not one",
+    "(decision 130): apps/mobile and ci/scripts need Node 20 LTS; apps/web",
+    "needs Node >=22.12.0 (see apps/web/package.json's own engines field and",
+    "apps/web/.nvmrc) because astro@7.2.9 requires it to clear HIGH/CRITICAL",
+    "npm-audit advisories unfixable on astro@5.x. Root's own engines field",
+    "matters because `npm ci` at the repo root - which installs every",
+    "workspace's deps together via the shared lockfile - runs under BOTH",
+    "versions depending on which CI job invoked it (see .github/workflows/",
+    "ci.yml's web-node22 job vs every other job). A single 20-only range",
+    "here produced a benign but noisy EBADENGINE warning on every Node-22",
+    "job; this range reflects reality instead."
+  ],
+  "engines": {
+    "node": ">=20 <21 || >=22 <23"
+  },
+  "scripts": {
+    "lint": "eslint . --ext .ts,.tsx --max-warnings=0",
+    "typecheck": "npm run typecheck -w apps/mobile && npm run typecheck -w ci/scripts && node -e \"console.log('NOTE: apps/web needs Node 22, see apps/web/.nvmrc (decision 130). Switch Node then run: npm run typecheck:web')\"",
+    "typecheck:web": "npm run typecheck -w apps/web",
+    "test": "npm run test -w apps/mobile && npm run test -w ci/scripts && node -e \"console.log('NOTE: apps/web needs Node 22, see apps/web/.nvmrc (decision 130). Switch Node then run: npm run test:web')\"",
+    "test:mobile": "npm run test -w apps/mobile",
+    "test:web": "npm run test -w apps/web",
+    "test:ci-scripts": "npm run test -w ci/scripts",
+    "ci:check-rls-enabled": "tsx ci/scripts/check-rls-enabled.ts",
+    "ci:check-security-invoker": "tsx ci/scripts/check-security-invoker.ts",
+    "ci:check-bundle-keys": "tsx ci/scripts/check-bundle-keys.ts",
+    "ci:check-migration-pairs": "tsx ci/scripts/check-migration-pairs.ts",
+    "ci:migration-reversibility": "tsx ci/scripts/migration-reversibility-test.ts",
+    "ci:rls-negative-auth": "tsx ci/scripts/rls-negative-auth/run.ts",
+    "ci:r2-denied-read": "tsx ci/scripts/r2-denied-read-test.ts"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.15.0",
+    "@typescript-eslint/parser": "^8.15.0",
+    "eslint": "^8.57.1",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.3.3",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}

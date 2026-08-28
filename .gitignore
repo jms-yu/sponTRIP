@@ -7,3 +7,34 @@ dist/
 build/
 .DS_Store
 coverage/
+
+# --- M0 additions (extends the baseline above, does not replace it) ---
+# Editors / OS
+.vscode/*
+!.vscode/extensions.json
+Thumbs.db
+
+# Expo / EAS
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+.expo-shared/
+apps/mobile/ios/
+apps/mobile/android/
+
+# Astro / web build output
+apps/web/.astro/
+
+# Supabase local dev
+supabase/.branches
+supabase/.temp
+supabase/.env
+
+# CI scratch output
+ci/scripts/.tmp/
+*.tsbuildinfo
+
+# Deno
+supabase/functions/**/.deno

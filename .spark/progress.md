@@ -1,7 +1,7 @@
 # Progress / Checkpoint
 
-current_command: /spark-plan
-current_phase: COMPLETE. Gate 1 APPROVED 2026-08-28 (decision 118), plan v0.6, 21.5 FTE-weeks. Next command: /spark-dev, starting at Milestone 0.
+current_command: /spark-dev
+current_phase: Milestone 0 (Scaffold & security baseline) — Phases 1-5 complete, Review Gate GO. Entering Phase 6 (close-out): scribe writes pr-draft.md + manual test checklist, then GATE 3 presented to the human.
 last_updated: 2026-08-28
 
 ## Blockers
@@ -203,3 +203,308 @@ last_updated: 2026-08-28
 - 2026-08-28 — **GATE 1 APPROVED (decision 118).** Founder gave explicit final
   approval of plan v0.6 in full. `/spark-plan` is complete. Next: `/spark-dev`
   to begin Milestone 0 (scaffold, CI, security baseline, environment recipe).
+- 2026-08-28 — **`/spark-dev` STARTED, Milestone 0.** Phase 0 preconditions
+  verified (plan APPROVED, no mid-flight checkpoint, live: false so no
+  live-production rules apply). Repo had no `.git` (greenfield, matches
+  GREENFIELD detection at project start) — initialized on `main` with a
+  baseline commit of pre-existing `.spark/`, `.claude/`, and ideation docs
+  (no application code). Branch `milestone/00-scaffold-security-baseline`
+  created off `main`. Entering Phase 1: spark-architect for M0 technical
+  spec + environment recipe selection (writes `.spark/environment.md`).
+- 2026-08-28 — **Phase 1 COMPLETE.** spark-architect returned the M0 technical
+  spec (repo layout, 3 reversible migrations, 4 Edge Function contracts, CI
+  mechanical-check contracts, full AC→test-strategy mapping) and the
+  environment recipe. Summary recorded as decisions 119–127.
+  `.spark/environment.md` written (adapted composite: mobile-expo client
+  tier + generic-principles Supabase backend tiering + generic-principles
+  Cloudflare Pages web tiering — no single recipe matched exactly).
+  Checkpoint. M0 has no UI surface, so Phase 2 (spark-designer) is skipped
+  per the orchestrator's own rule. Entering Phase 3: spark-developer build.
+- 2026-08-28 — **Phase 3 (spark-developer build) COMPLETE.** Full M0 scope
+  built and verified against a real local Supabase Docker stack (not just
+  written): 3 migrations with tested rollbacks (INF-2), 4 Deno Edge
+  Functions (11/11 tests pass), 8 CI mechanical-check scripts covering
+  SEC-1..4/INF-2/INF-9, PostHog fixture seeder + funnel merge-test
+  (INF-6), Expo mobile scaffold (12/12 Jest tests — Sentry PII scrubber,
+  INF-5), Astro web scaffold (INF-3, hand-scaffolded — current Astro CLI
+  needs Node 22, this repo pins Node 20 LTS), full GitHub Actions
+  pipeline + Dependabot. Real pg_cron T+2min firing proven against the
+  local stack (no cloud project exists). One finding logged to
+  `security.md` §7 rather than silently resolved: Astro's security-patched
+  major needs Node 22, in tension with the Node 20 pin — CI's npm-audit
+  gate deliberately left unweakened. 11 commits on
+  `milestone/00-scaffold-security-baseline`. `.spark/pr-draft.md` written.
+  **Status: awaiting-acceptance, NOT marked done** — per spark-commit
+  protocol, requires human-confirmed merge first. Entering QA/Review Gate.
+- 2026-08-28 — **Paused before QA**: `npm audit --audit-level=high` is
+  genuinely red on this branch (astro@5.18.2's HIGH/CRITICAL advisories,
+  fixed only in astro@7.2.9 which needs Node ≥22, vs. the repo's Node 20
+  pin) — a human decision, not a QA-fixable bug, so asked before spending a
+  build↔QA cycle on it. **Founder decided: bump `apps/web` to Node 22**
+  (decision 130), mobile/ci stay on Node 20. Resuming the same
+  spark-developer agent to implement, then proceeding to Phase 4 (QA).
+- 2026-08-28 — **Node 22 fix complete.** Astro bumped 5.18.2 to 7.2.9 in
+  `apps/web`, given its own `.nvmrc` (22) distinct from the repo root (20);
+  `.github/workflows/ci.yml` split into a dedicated `web-node22` job.
+  A second, unrelated HIGH/CRITICAL chain was found in the same pass
+  (`vitest` to `vite`, dev-tooling only, in both `apps/web` and
+  `ci/scripts`) and fixed by bumping `vitest` to `^4.1.11`. `npm audit
+  --audit-level=high` verified clean under both Node 20 and 22 by actually
+  running it. 11 moderate-only findings remain (Expo SDK 57's own
+  `uuid`/`xcode` chain, no fix available without a major Expo downgrade —
+  doesn't trip the `--audit-level=high` gate). 4 more commits.
+  `security.md` §7 and `pr-draft.md` updated with a resolution note, not
+  overwritten. `.spark/environment.md`'s Web dev-tier section updated in
+  place by the developer to document the Node split — reviewed, accurate,
+  kept as-is. **Entering Phase 4: QA.**
+- 2026-08-28 — **Phase 4 (QA) COMPLETE — everything runnable passed.**
+  Exact counts matched expectations: 12/12 mobile Jest, 2/2 web Vitest +
+  clean `astro build`/`astro check`, 26/26 ci/scripts Vitest, 11/11 Deno
+  Edge Function tests, `npm audit --audit-level=high` clean under both
+  Node 20 and 22 (11 moderate-only findings from Expo SDK 57's own
+  dependency chain, zero HIGH/CRITICAL). QA independently re-verified two
+  developer claims rather than trusting them: (1) broke a test and
+  confirmed `npm test` genuinely exits nonzero, reverted cleanly; (2) read
+  `check-bundle-keys.ts` to confirm it scans a real `npx expo export`
+  bundle output, not just source text. QA also read `ci.yml` directly to
+  confirm every mechanical check (SEC-1..4, INF-2, INF-9, migration-pairs,
+  npm-audit) is wired as a blocking job/step with no `continue-on-error` —
+  one caveat noted: whether these are configured as **required** GitHub
+  branch-protection status checks is a repo-settings question invisible
+  from the workflow file itself, flagged manual-only for the human.
+  Credential-gated items (INF-9's real R2 denial, INF-6's real PostHog
+  funnel, INF-7/8 push/email, INF-10 billing alert, INF-3's live HTTPS
+  domain, a real EAS build) all confirmed to honestly self-skip (loud
+  warning, not a silent pass) rather than being run. Zero failures.
+  **Entering Phase 5: Review Gate.**
+- 2026-08-28 — **Phase 5 (Review Gate) — NO-GO, remediation cycle 1 of 3.**
+  Opus/xhigh review of `main..HEAD` (15 commits). QA evidence integrity
+  **confirmed accurate** — every re-run claim held (migration-reversibility,
+  negative-auth matrix, all test counts, npm audit under both Node
+  versions, `ci.yml` blocking wiring all independently reproduced). No
+  scope drift found — nothing built outside INF-1…10/SEC-1…4, decision 130's
+  Node split implemented cleanly with no cross-contamination. **NO-GO is
+  from real defects the QA suite doesn't test for, not misreported
+  evidence.** 11 findings, most severe two:
+  1. **[HIGH] `mint-storage-url` path-traversal, proven live** — `../`
+     segments in the `key` field survive the prefix check and get resolved
+     by the URL parser before signing, letting any authenticated user mint
+     read+write URLs into another user's `general` objects and into
+     `receipts`/`verification` (supposed to be unconditional 403 for
+     everyone at M0). Neither existing test would catch it — both only
+     probe the naive case. Defeats the one non-RLS access-control path
+     `security.md` §5 knowingly accepted; becomes CRITICAL the moment real
+     R2 credentials land (itself a pending M0 item).
+  2. **[HIGH] SEC-1/SEC-2's "unwritable" half is never tested** — the
+     negative-auth suite only ever issues `SELECT`; no INSERT/UPDATE/DELETE
+     is attempted by anon or a non-owner anywhere. Live DB behavior is
+     currently correct (verified manually), but the mechanical control
+     `decisions.md` 112/126 relies on to make human RLS review safely
+     optional doesn't actually prove write-denial — and every table from M1
+     onward inherits this blind spot silently green.
+  Plus: [MEDIUM] the suite reports PASS for tables that don't exist
+  (swallows schema errors as "0 rows"); [MEDIUM] SEC-3's source scan misses
+  a hardcoded service_role literal under an innocuous variable name (bundle
+  scan does catch it); [MEDIUM] shared-secret comparison is timing-unsafe
+  on 3 functions; [MEDIUM] INF-4 has no committed `cron.schedule` artifact
+  (only the ledger + handlers — the manual T+2min proof isn't reproducible
+  by anyone else); [MEDIUM] "CI blocks a deliberately failing PR"/"SEC-2
+  blocks merge" aren't actually established without a GitHub branch-
+  protection ruleset, which nothing in this changeset configures or even
+  lists as a manual step; [MEDIUM] Sentry scrubber allow-lists 5 fields,
+  doesn't cover `user`/`tags`/`contexts` — a landmine for M1's
+  `Sentry.setUser()`; [LOW] migration-reversibility only tests the newest
+  migration and doesn't recognize functions/enums/materialized views;
+  [LOW] `enable_extensions.down.sql` would drop Supabase's own
+  platform-managed `pgcrypto`; hardening notes on CORS `*`, `send-test-push`
+  having no prod-exclusion mechanism, INF-8 having zero committed artifact,
+  and a root `package.json` engines mismatch against decision 130.
+  Routing findings 1–8 back to `spark-developer` (9–11 may be logged and
+  carried, but recommended fixed now since M1's schema will trip 9/10).
+- 2026-08-28 — **Remediation cycle 1 COMPLETE — all 11 findings fixed**
+  (1–8 required, 9–11 recommended, all addressed since none were high
+  effort and 9/10 would otherwise trip on M1's schema per the Review
+  Gate's own note). 11 commits on `milestone/00-scaffold-security-baseline`.
+  Every fix verified against the real local Supabase stack, not just
+  typechecked — including re-proving finding 1's traversal exploit is
+  closed with the reviewer's exact reproduction steps as new regression
+  tests, and sanity-checking finding 2's new write-denial tests by
+  temporarily adding permissive INSERT/UPDATE policies and confirming the
+  suite catches them before reverting. One test-isolation bug caught and
+  fixed in the same pass while adding finding 11's coverage (a test
+  deleting an env var without restoring it, silently corrupting later
+  tests in the same file via shared process-wide env state — not a
+  reported finding, found by actually running the new tests rather than
+  trusting them). Full finding-by-finding writeup delivered to the
+  coordinator separately. Local dev environment note for future sessions:
+  the Kong gateway container occasionally caches a stale upstream IP for
+  the auth container after a `supabase stop`/`start` cycle, surfacing as
+  502s / empty error objects from `auth.admin.createUser` — `docker
+  restart supabase_kong_SponTRIP` resolves it; not a code issue, confirmed
+  via Kong's own access logs ("connect() failed ... Connection refused"
+  against a stale IP). **Entering Phase 4: QA (remediation cycle 1 verify),
+  then Phase 5: Review Gate (cycle 2 of 3).**
+- 2026-08-28 — **Finding 2 follow-up fix complete.** QA's live
+  reproduction confirmed the root cause: `attemptInsert()` chained
+  `.select("id").single()` onto the mutating INSERT, and Postgres RLS
+  makes `INSERT ... RETURNING` fail identically whether the INSERT itself
+  was denied or only its RETURNING-read was denied (all 3 M0 matrix rows
+  have zero SELECT policies) — the suite couldn't distinguish a real deny
+  from a successful insert it merely couldn't read back, so a genuinely
+  permissive INSERT policy still reported PASS. Fixed by mirroring
+  attemptUpdate/attemptDelete's already-correct pattern: insert bare (no
+  `.select()`), tag with a per-identity probe value, verify independently
+  via a separate service-role read. Re-ran QA's exact sanity check against
+  the real local stack (planted `qa_temp_permissive_insert` on
+  `smoke_test`) — fixed suite now correctly FAILs loudly on both
+  `smoke_test` and `smoke_test_view`; reverted, confirmed zero leftover
+  rows and a clean PASS. Full suite re-verified: 29/29 ci/scripts Vitest,
+  19/19 Deno tests, root lint/typecheck clean. One commit
+  (`ddf9fee`). **Entering QA re-verification, then Review Gate cycle 2 of
+  3.**
+- 2026-08-28 — **Final QA pass confirmed finding 2 closed** with QA's own
+  independent live reproduction (replanted the permissive INSERT policy,
+  confirmed loud failure, confirmed the fix detects the real attack shape
+  not a coincidental one, reverted clean) — not taken on the developer's
+  word. Full regression sweep: 16/16 mobile, 2/2 web, 29/29 ci/scripts,
+  19/19 Deno, npm audit clean both Node versions, no drift from prior
+  counts. **All 11 remediation-cycle-1 findings now genuinely fixed and
+  tested. Entering Review Gate cycle 2 of 3.**
+- 2026-08-28 — **Phase 5 (Review Gate) cycle 2 — GO.** Both HIGH findings
+  independently re-verified as closed, not re-read: finding 1 survived 17
+  exploit variants (6 new encoding cases beyond the original 3) with zero
+  escapes; finding 2 was mutation-tested — 8 real permission grants
+  planted live, 6/8 caught, the 2 misses proven to be equivalent mutants
+  (Postgres denies UPDATE/DELETE with no SELECT policy regardless, so
+  nothing was actually granted). INF-4's `cron-jobs.md` runbook was
+  executed end-to-end against real wall-clock pg_cron firing (both -ok and
+  -fail paths, `job_runs` rows confirmed). Findings 3–11 each
+  independently re-verified. Zero unresolved Critical/High findings, zero
+  scope creep (4 new files, each traceable to a specific finding), every
+  QA-reported count reproduced exactly. Four new non-blocking
+  observations (2 MEDIUM, 2 LOW) — logged in `security.md` §7 as
+  M1-kickoff follow-ups per the Review Gate's own recommendation, not
+  routed to a 3rd remediation cycle. **VERDICT: GO.**
+- 2026-08-28 — **Milestone 0 — Phase 5 complete, GO. `milestones.md` M0
+  status set to `awaiting-acceptance`.** 29 commits on
+  `milestone/00-scaffold-security-baseline`, 2 of the allowed 3
+  remediation cycles used. Entering Phase 6: spark-scribe writes the final
+  `pr-draft.md` (incorporating the GO verdict, the two remediation cycles,
+  and the M1-follow-up observations) and the M0 manual testing checklist,
+  then GATE 3 is presented to the human.
+- 2026-08-28 — **Phase 6 complete.** spark-scribe finalized `pr-draft.md`
+  and wrote `m0-manual-test-checklist.md`. Orchestrator fact-checked both
+  against the actual shipped code before presenting and found/fixed 4
+  substantive drift issues the scribe (working from state-file summaries,
+  not the code itself) introduced: wrong Sentry DSN env var name plus a
+  test approach that would have bypassed the client-side `beforeSend`
+  scrubber entirely; wrong PostHog env var names, a nonexistent npm
+  script, and a described 3-step funnel when the shipped funnel is 2
+  steps; wrong `send-test-push` header name/payload field and a missing
+  mention of the `ALLOW_TEST_PUSH` gate added in remediation; a
+  nonexistent R2 test npm script and missing required Supabase env vars.
+  All corrected against the real source before commit. **GATE 3
+  presented to the human.**
+- 2026-08-28 — **GATE 3 manual testing in progress, walked through
+  interactively with the founder.** Test #1 (CI blocks a failing PR)
+  PASSED — real throwaway PR opened against a newly-connected GitHub repo
+  (`github.com/jms-yu/sponTRIP`), `Test - apps/mobile` went red as
+  expected, 10 other checks stayed green, closed without merging. Test #2
+  (migration reversibility) PASSED — ran the real
+  `migration-reversibility-test.ts` directly rather than the checklist's
+  manual pg_dump steps (which had a wrong port number, now fixed in the
+  checklist). Test #3 (web domain/HTTPS) deferred — founder needs to
+  purchase a domain first. Test #4 (scheduled job T+2min) PASSED — ran
+  `cron-jobs.md`'s runbook live against the local stack a third time
+  (previously run once by the developer, once by the Review Gate): both
+  the success path (`job_runs.status = 'succeeded'`) and failure path
+  (`status = 'failed'`, `error = 'deliberate smoke-test failure'`) fired
+  and recorded correctly, both jobs unscheduled after, `cron.job` confirmed
+  empty. Continuing through the remaining items next.
+- 2026-08-28 — **Tests #5 (Sentry) and #7 (push notification) PAUSED, not
+  failed.** Real blocker found and worked through methodically: Jest can't
+  prove real Sentry delivery (native SDK disabled in its mocked RN
+  environment — confirmed via debug logging, "flush() returned: true" but
+  no event ever reached Sentry); the real app requires a physical device.
+  Attempted via Expo Go (QR connection worked correctly — proves the dev
+  server and network path are fine) but hit a hard SDK-version wall:
+  this project targets Expo SDK 57, current Expo Go only supports up to
+  SDK 54 (confirmed by the founder's own device), and that mismatch has no
+  workaround short of a custom dev client. Founder opted to build a proper
+  EAS development client (the correct long-term path — needed for all
+  future device testing, not just this check) rather than downgrade SDK or
+  skip. Logged into EAS CLI as `jms_yu` after working around this sandbox's
+  inability to handle any interactive terminal prompt (login had to be run
+  in the founder's own VS Code terminal). **Blocked again immediately
+  after:** founder does not yet have an Apple Developer Program membership
+  (needed for iOS code signing, confirmed the phone in use is an iPhone),
+  which is money ($99/yr) and 1-2 days identity verification — already
+  flagged as a founder task in `milestones.md`'s M0 section, now
+  confirmed not yet done. **Both tests paused here**, temporary test
+  button in `App.tsx` reverted, dev server stopped, local `.env` DSN file
+  removed — clean state to resume from once Apple Developer enrollment
+  completes. Continuing with checklist items that don't depend on it.
+- 2026-08-28 — **Test #11 (branch protection) PASSED — verified with a
+  real second throwaway PR, not just by inspecting the settings.**
+  GitHub repo connected to a working ruleset requiring all 11 mechanical
+  CI checks (verified against `ci.yml`'s actual top-level job `name:`
+  fields, not step names — an earlier naive grep pass would have pulled
+  nested step names too). Founder chose to drop the ruleset's default
+  1-approving-review requirement (GitHub disallows self-approval; this is
+  currently a solo-merge team relying on the automated Review Gate
+  instead of a second human reviewer) — `.github/rulesets/require-ci-checks.json`
+  updated and committed to reflect that decision, with reasoning recorded
+  in the file's own comment. Second throwaway PR opened with the same
+  kind of deliberate test failure: this time the failing check showed
+  tagged **"Required"** and the **"Merge pull request" button was greyed
+  out/disabled** — the real, load-bearing proof branch protection blocks
+  merges, not just that checks turn red. Closed without merging, branches
+  cleaned up locally and on GitHub.
+- 2026-08-28 — Test #6 (PostHog repeat-join funnel) PASSED, but only after
+  finding and fixing a real, permanent bug in
+  posthog-funnel.merge-test.ts that had NEVER been run against real
+  PostHog credentials before now (QA and Review Gate both correctly
+  honest-skipped it for lack of them at the time). Founder created a real
+  PostHog account/project; running the test for the first time against
+  live credentials failed. Root-caused through direct API experimentation
+  to three independently-confirmed issues, all fixed in one commit:
+  (1) refresh=blocking doesn't bust the Query API's cache on repeat polls
+  with the same query, so polling against not-yet-ingested data
+  permanently poisons the cache with an empty answer that never recovers
+  - fixed with refresh=force_blocking; (2) FunnelsQuery itself returns
+  empty even with force_blocking against data independently proven
+  present via raw HogQL on the identical run_id - replaced with a direct
+  count(DISTINCT distinct_id) GROUP BY event HogQL query, verified
+  reliable where FunnelsQuery was not; (3) real Kafka to ClickHouse
+  ingestion lag on this project is substantial and non-uniform (measured
+  via 15-second checkpointing: 1 of 16 events landed in seconds, then a
+  ~5-minute plateau, then the remaining 15 together) - timeout raised
+  from 2 to 8 minutes. Two wrong turns corrected honestly along the way
+  rather than papered over. Final fix verified with a full real
+  end-to-end run against live credentials: PASS, 305s. Typecheck, lint,
+  and the full 29-test unit suite confirmed no regression. PostHog
+  secrets added as GitHub repository secrets so this becomes a real,
+  permanent merge-to-main gate (not yet fire-tested live, since that job
+  only runs on push to main, which hasn't happened yet pending the rest
+  of GATE 3).
+- 2026-08-29 — Founder purchased the spontrip.app domain and added it to
+  Cloudflare (unblocks Test #3 - INF-3 web/HTTPS - deferred item, not yet
+  resumed). Also created a Resend account and verified spontrip.app as a
+  sending domain there.
+- 2026-08-29 — Test #8 (password-reset email) PASSED, using the newly
+  verified domain. Wired real Resend SMTP into
+  supabase/config.toml's auth.email.smtp block for real (previously
+  entirely commented out - INF-8 had zero working email path in any
+  environment before now, a gap the Review Gate had already flagged).
+  Hit and fixed one real snag: the first attempt used
+  noreply@send.spontrip.app as the sender and got a 550 "API key not
+  authorized" rejection from Resend - root-caused via the auth
+  container's own logs, not guesswork. Resend's actual verified domain is
+  the root spontrip.app; send.spontrip.app only appears in the DNS
+  records Resend asks you to add (MX/SPF routing), it is not the sender
+  address domain, and the API key must be scoped to match. Fixed by
+  using noreply@spontrip.app with a correctly-scoped key. Verified
+  end-to-end for real: created a throwaway local auth user with the
+  founder's real email, triggered POST /auth/v1/recover, and a working
+  password-reset email arrived in about 1 minute (well under the 2-minute
+  AC), from the real branded sender. Throwaway test user deleted after.
