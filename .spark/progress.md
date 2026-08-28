@@ -507,6 +507,26 @@ last_updated: 2026-08-29
   rather than hold it open on the two Apple-blocked items, since nothing
   else in the plan depends on them. **Ready for `/spark-document` and
   Milestone 1 (App shell, IA, design system, accounts).**
+- 2026-08-29 — **Post-close finding: `INF-9 - r2-denied-read-test` CI
+  secrets were pointed at the local Docker stack, not a reachable cloud
+  project — orchestrator error, corrected.** Surfaced when the founder
+  opened a real PR (#20) for M0's close-out and the job failed with
+  `ECONNREFUSED 127.0.0.1:54421`. Root cause: during Test #9, the
+  orchestrator wrongly assumed this CI job spins up its own local
+  Supabase stack like the "Supabase integration" job does — it doesn't;
+  the job's own comment in `ci.yml` says it needs a real cloud project,
+  which wasn't read carefully enough before giving guidance. Fixed by
+  deploying `mint-storage-url` for real to the founder's new cloud
+  Supabase project (`bgroumrkfbjizvzdnpsg`, via `supabase functions
+  deploy`, after confirming via source read it has no database
+  dependency), setting its R2 credentials as project secrets, and
+  correcting the 3 GitHub secrets to the cloud project's real URL/keys.
+  Verified locally against the live cloud project before touching CI
+  (PASS), then confirmed via the corrected PR going green for real. Full
+  writeup in `security.md`'s findings log — logged deliberately as an
+  orchestrator mistake, not glossed over, per this project's own
+  "mechanical checks catch what review misses, including our own"
+  posture. PR #20 merged; `main` synced.
 - 2026-08-28 — **Tests #5 (Sentry) and #7 (push notification) PAUSED, not
   failed.** Real blocker found and worked through methodically: Jest can't
   prove real Sentry delivery (native SDK disabled in its mocked RN
