@@ -405,3 +405,19 @@ last_updated: 2026-08-28
   nonexistent R2 test npm script and missing required Supabase env vars.
   All corrected against the real source before commit. **GATE 3
   presented to the human.**
+- 2026-08-28 — **GATE 3 manual testing in progress, walked through
+  interactively with the founder.** Test #1 (CI blocks a failing PR)
+  PASSED — real throwaway PR opened against a newly-connected GitHub repo
+  (`github.com/jms-yu/sponTRIP`), `Test - apps/mobile` went red as
+  expected, 10 other checks stayed green, closed without merging. Test #2
+  (migration reversibility) PASSED — ran the real
+  `migration-reversibility-test.ts` directly rather than the checklist's
+  manual pg_dump steps (which had a wrong port number, now fixed in the
+  checklist). Test #3 (web domain/HTTPS) deferred — founder needs to
+  purchase a domain first. Test #4 (scheduled job T+2min) PASSED — ran
+  `cron-jobs.md`'s runbook live against the local stack a third time
+  (previously run once by the developer, once by the Review Gate): both
+  the success path (`job_runs.status = 'succeeded'`) and failure path
+  (`status = 'failed'`, `error = 'deliberate smoke-test failure'`) fired
+  and recorded correctly, both jobs unscheduled after, `cron.job` confirmed
+  empty. Continuing through the remaining items next.
