@@ -487,3 +487,24 @@ last_updated: 2026-08-28
   permanent merge-to-main gate (not yet fire-tested live, since that job
   only runs on push to main, which hasn't happened yet pending the rest
   of GATE 3).
+- 2026-08-29 — Founder purchased the spontrip.app domain and added it to
+  Cloudflare (unblocks Test #3 - INF-3 web/HTTPS - deferred item, not yet
+  resumed). Also created a Resend account and verified spontrip.app as a
+  sending domain there.
+- 2026-08-29 — Test #8 (password-reset email) PASSED, using the newly
+  verified domain. Wired real Resend SMTP into
+  supabase/config.toml's auth.email.smtp block for real (previously
+  entirely commented out - INF-8 had zero working email path in any
+  environment before now, a gap the Review Gate had already flagged).
+  Hit and fixed one real snag: the first attempt used
+  noreply@send.spontrip.app as the sender and got a 550 "API key not
+  authorized" rejection from Resend - root-caused via the auth
+  container's own logs, not guesswork. Resend's actual verified domain is
+  the root spontrip.app; send.spontrip.app only appears in the DNS
+  records Resend asks you to add (MX/SPF routing), it is not the sender
+  address domain, and the API key must be scoped to match. Fixed by
+  using noreply@spontrip.app with a correctly-scoped key. Verified
+  end-to-end for real: created a throwaway local auth user with the
+  founder's real email, triggered POST /auth/v1/recover, and a working
+  password-reset email arrived in about 1 minute (well under the 2-minute
+  AC), from the real branded sender. Throwaway test user deleted after.
