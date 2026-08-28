@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Cloudflare deprecated the classic "Pages" onboarding UI in favor of
+  // Workers with static assets, which is what this config drives - the
+  // web surface is still a plain static site (apps/web, Astro output:
+  // "static"), just deployed via `wrangler deploy` instead of the old
+  // Pages-specific git integration. No Worker script logic here at all,
+  // this is purely a static-asset host.
+  "name": "spontrip",
+  "compatibility_date": "2026-08-28",
+  "assets": {
+    "directory": "./apps/web/dist"
+  }
+}
