@@ -296,3 +296,29 @@ available without a major Expo downgrade). Zero HIGH or CRITICAL remain.
 
 This entry is kept (not deleted) as the finding's full history — see also
 `.spark/decisions.md` 130 and `.spark/environment.md`'s Dev/Web section.
+
+### 2026-08-28 — GATE 3 manual testing — posthog-funnel.merge-test.ts never worked against a real PostHog project
+
+**Severity tag: MEDIUM** (not a security defect — a permanent CI-blocking
+test that would have false-failed on every merge to `main` forever, once
+real credentials were configured, defeating INF-6's entire purpose of
+proving the success-metric pipeline works).
+
+This test could not be exercised before now — QA and the Review Gate both
+correctly honest-skipped it for lack of real PostHog credentials, exactly
+as designed. The first time it ran against a real account (founder-created
+during GATE 3 manual testing), it failed. Root-caused via direct API
+experimentation to three separate, independently-confirmed issues: (1) the
+Query API's `refresh=blocking` param does not bust its own cache on
+repeat polls with an identical query, so polling against not-yet-ingested
+data permanently caches an empty answer; (2) `FunnelsQuery` returns empty
+results even with the correct cache-busting param, against data
+independently proven present via raw HogQL — a real limitation in that
+query type's forced-refresh path, not caching or lag; (3) real
+Kafka to ClickHouse ingestion lag on this project is substantial (up to
+several minutes) and non-uniform (a fixed-interval batch-flush pattern,
+not smooth per-event delay). All three fixed together in
+`ci/scripts/posthog-funnel.merge-test.ts` (see that file's own header
+comment for full detail and the exact measurements taken). Verified with a
+real, live end-to-end run: PASS. **Resolved**, not merely logged — no
+further action needed.

@@ -460,3 +460,30 @@ last_updated: 2026-08-28
   out/disabled** — the real, load-bearing proof branch protection blocks
   merges, not just that checks turn red. Closed without merging, branches
   cleaned up locally and on GitHub.
+- 2026-08-28 — Test #6 (PostHog repeat-join funnel) PASSED, but only after
+  finding and fixing a real, permanent bug in
+  posthog-funnel.merge-test.ts that had NEVER been run against real
+  PostHog credentials before now (QA and Review Gate both correctly
+  honest-skipped it for lack of them at the time). Founder created a real
+  PostHog account/project; running the test for the first time against
+  live credentials failed. Root-caused through direct API experimentation
+  to three independently-confirmed issues, all fixed in one commit:
+  (1) refresh=blocking doesn't bust the Query API's cache on repeat polls
+  with the same query, so polling against not-yet-ingested data
+  permanently poisons the cache with an empty answer that never recovers
+  - fixed with refresh=force_blocking; (2) FunnelsQuery itself returns
+  empty even with force_blocking against data independently proven
+  present via raw HogQL on the identical run_id - replaced with a direct
+  count(DISTINCT distinct_id) GROUP BY event HogQL query, verified
+  reliable where FunnelsQuery was not; (3) real Kafka to ClickHouse
+  ingestion lag on this project is substantial and non-uniform (measured
+  via 15-second checkpointing: 1 of 16 events landed in seconds, then a
+  ~5-minute plateau, then the remaining 15 together) - timeout raised
+  from 2 to 8 minutes. Two wrong turns corrected honestly along the way
+  rather than papered over. Final fix verified with a full real
+  end-to-end run against live credentials: PASS, 305s. Typecheck, lint,
+  and the full 29-test unit suite confirmed no regression. PostHog
+  secrets added as GitHub repository secrets so this becomes a real,
+  permanent merge-to-main gate (not yet fire-tested live, since that job
+  only runs on push to main, which hasn't happened yet pending the rest
+  of GATE 3).
