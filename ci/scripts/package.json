@@ -13,7 +13,7 @@
     "@aws-sdk/client-s3": "^3.686.0",
     "@aws-sdk/s3-request-presigner": "^3.686.0",
     "@supabase/supabase-js": "^2.45.4",
-    "glob": "^11.0.0",
+    "glob": "^13.0.6",
     "pg": "^8.13.1",
     "ws": "^8.18.0"
   },
