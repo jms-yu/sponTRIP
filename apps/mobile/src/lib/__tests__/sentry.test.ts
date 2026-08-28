@@ -7,6 +7,10 @@ describe("redactPii", () => {
     );
   });
 
+  it("DELIBERATE CI DRILL #2 — safe to delete, verifying branch protection blocks merge", () => {
+    expect(1 + 1).toBe(3);
+  });
+
   it("redacts a +63 formatted PH phone number", () => {
     expect(redactPii("call +639171234567 now")).toBe("call [REDACTED_PHONE] now");
   });
