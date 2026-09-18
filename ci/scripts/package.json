@@ -10,18 +10,18 @@
     "test:merge": "vitest run --config vitest.merge.config.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.686.0",
-    "@aws-sdk/s3-request-presigner": "^3.686.0",
-    "@supabase/supabase-js": "^2.45.4",
-    "glob": "^11.0.0",
+    "@aws-sdk/client-s3": "^3.1132.0",
+    "@aws-sdk/s3-request-presigner": "^3.1132.0",
+    "@supabase/supabase-js": "^2.116.0",
+    "glob": "^13.0.6",
     "pg": "^8.13.1",
     "ws": "^8.18.0"
   },
   "devDependencies": {
-    "@types/node": "^20.17.6",
+    "@types/node": "^26.5.1",
     "@types/pg": "^8.11.10",
     "@types/ws": "^8.5.13",
-    "typescript": "^5.6.3",
-    "vitest": "^4.1.11"
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.0"
   }
 }
